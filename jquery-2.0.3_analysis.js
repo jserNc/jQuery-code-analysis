@@ -4453,8 +4453,10 @@ jQuery.extend({
 					var fns = arguments;
 					return jQuery.Deferred(function( newDefer ) {
 						jQuery.each( tuples, function( i, tuple ) {
+                            // action = "resolve" | "reject" | "notify"
 							var action = tuple[ 0 ],
 								fn = jQuery.isFunction( fns[ i ] ) && fns[ i ];
+
 							// deferred[ done | fail | progress ] for forwarding actions to newDefer
 							deferred[ tuple[1] ](function() {
 								var returned = fn && fn.apply( this, arguments );
@@ -4484,23 +4486,53 @@ jQuery.extend({
 
 		// Add list-specific methods
 		jQuery.each( tuples, function( i, tuple ) {
-			var list = tuple[ 2 ],
-				stateString = tuple[ 3 ];
+            // list = $.callbacks("once memory");
+			var list = tuple[ 2 ],          // jQuery.Callbacks("once memory")
+				stateString = tuple[ 3 ];   // "resolved" | "rejected" | undefined
 
 			// promise[ done | fail | progress ] = list.add
+            /* 
+            promise[ "done" ] = $.callbacks("once memory").add
+            promise[ "fail" ] = $.callbacks("once memory").add
+            promise[ "progress" ] = $.callbacks("memory").add
+            */
 			promise[ tuple[1] ] = list.add;
 
 			// Handle state
+            // i 只能为 0 或 1
 			if ( stateString ) {
 				list.add(function() {
 					// state = [ resolved | rejected ]
 					state = stateString;
 
-				// [ reject_list | resolve_list ].disable; progress_list.lock
-				}, tuples[ i ^ 1 ][ 2 ].disable, tuples[ 2 ][ 2 ].lock );
+				/*
+                异或 ^ : 两个二进制位不同返回 1，相同返回 0
+                如： 0 ^ 3 -> (00) ^ (11) -> (00) -> 0
+                     0 ^ 1 -> (00) ^ (01) -> 1
+                     1 ^ 1 -> 0
+                     2 ^ 1 -> (10) ^ (01) -> (11) -> 3
+                */
+                // [ reject_list | resolve_list ].disable; progress_list.lock
+                }, tuples[ i ^ 1 ][ 2 ].disable, tuples[ 2 ][ 2 ].lock );
 			}
 
+            /*
+            相当于：
+            doneList : [changeState, failList.disable, processList.lock]
+            failList : [changeState, doneList.disable, processList.lock]
+
+            ① changeState 改变状态的匿名函数，deferred的状态，分为三种：pending(初始状态), resolved(解决状态), rejected(拒绝状态)
+            ② 不论deferred对象最终是resolve（还是reject），在首先改变对象状态之后，都会disable另一个函数列表failList(或者doneList)
+            ③ 然后lock processList保持其状态，最后执行剩下的之前done（或者fail）进来的回调函数
+            */
+
 			// deferred[ resolve | reject | notify ]
+            /*
+            deferred[ "resolve" ] = function(){
+                deferred[ "resolveWith" ](this === deferred ? promise : this, arguments );
+                return this;
+            }
+            */
 			deferred[ tuple[0] ] = function() {
 				deferred[ tuple[0] + "With" ]( this === deferred ? promise : this, arguments );
 				return this;
