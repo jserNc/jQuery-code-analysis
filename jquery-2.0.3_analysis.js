@@ -4061,7 +4061,7 @@ document.addEventListener('click',function(){console.log(1),false});
 
 ② 管理不同作用域下定义的函数
 
-var cb = $.callbacks();
+var cb = $.Callbacks();
 
 function aaa(){
     console.log(1);
@@ -4086,12 +4086,12 @@ cb.fire();
 cb.fire();
 这样会依次两次触发回调函数
 
-$.callbacks('once') 代表 fire() 只能一次触发回调
+$.Callbacks('once') 代表 fire() 只能一次触发回调
 
 b) memory 
 
 如果没有这个参数：
-var cb = $.callbacks();
+var cb = $.Callbacks();
 cb.add(aaa);
 cb.fire();
 cb.add(bbb);
@@ -4103,7 +4103,7 @@ cb.add(bbb);
 c) unique 保证回调函数的唯一性
 
 如果没有这个参数：
-var cb = $.callbacks();
+var cb = $.Callbacks();
 cb.add(aaa);
 cb.add(aaa);
 cb.fire();
@@ -4115,7 +4115,7 @@ cb.fire();
 
 d) stopOnFalse
 
-如果写上这个参数，var cb = $.callbacks('stopOnFalse');
+如果写上这个参数，var cb = $.Callbacks('stopOnFalse');
 
 function aaa(){
     console.log(1);
@@ -4124,7 +4124,7 @@ function aaa(){
 
 加入 aaa 函数返回 false，那么它后面的 bbb 等回调函数就不会触发
 
-e) 组合 var cb = $.callbacks('once memory');
+e) 组合 var cb = $.Callbacks('once memory');
 
 
 ④ 方法：add、remove、has、empty、disable、disabled、lock、locked、fireWith、fire、fired
@@ -4247,7 +4247,7 @@ jQuery.Callbacks = function( options ) {
 			}
 		},
 		// Actual Callbacks object
-        // $.callbacks() 返回的就是这个 self 对象
+        // $.Callbacks() 返回的就是这个 self 对象
 		self = {
 			// Add a callback or a collection of callbacks to the list
             // 回调队列中添加一个回调或回调的集合
@@ -4293,7 +4293,7 @@ jQuery.Callbacks = function( options ) {
                      ③ 有 memory，对于还没执行的函数，我们要立即执行它们
 
                      即便是设置了 options.once ，只要执行过 fire 方法，使得 memory 有值，就会触发 cb.add(fn) 新增的 fn 方法
-                     var cb = $.callbacks('once memory');
+                     var cb = $.Callbacks('once memory');
                      cb.add(fn1);
                      cb.fire();
                      cb.add(fn2);
@@ -4390,7 +4390,7 @@ jQuery.Callbacks = function( options ) {
                     // [1,2,3].slice() -> [1, 2, 3]
 					args = [ context, args.slice ? args.slice() : args ];
                     /*
-                    var cb = $.callbacks();
+                    var cb = $.Callbacks();
                     function fn1(value){
                         console.log('fn1'+value);
                         cb.fire()
@@ -4431,6 +4431,250 @@ jQuery.Callbacks = function( options ) {
 
 	return self;
 };
+
+/*
+jQuery.extend({
+    Deferred : function(){},
+    when : function(){}
+});
+
+得到两个工具方法：
+
+$.Deferred();
+$.when();
+
+例子1：
+setTimeout(function(){
+    alert(111);
+},1000);
+
+alert(222);
+
+先弹 222，1 秒后弹 111
+
+例子2：
+var cb = $.Callbacks();
+
+setTimeout(function(){
+    alert(111);
+    cb.fire();
+},1000);
+
+cb.add(function(){
+    alert(222);
+});
+
+1 秒后，先弹 111，再弹 222
+
+例子3：
+var dfd = $.Deferred();
+
+setTimeout(function(){
+    alert(111);
+    // 触发完成回调队列
+    dfd.resolve();
+},1000);
+
+// 注册完成回调
+dfd.done(function(){
+    alert(222);
+});
+
+1 秒后，先弹 111，再弹 222。（和上面的运行结果一样）
+
+例子4：
+var dfd = $.Deferred();
+
+setTimeout(function(){
+    alert(111);
+    // 触发失败回调队列
+    dfd.reject();
+},1000);
+
+// 注册失败回调
+dfd.fail(function(){
+    alert(222);
+});
+
+1 秒后，先弹 111，再弹 222。（和上面的运行结果一样）
+
+例子5：
+var dfd = $.Deferred();
+
+setTimeout(function(){
+    alert(111);
+    // 触发进行中回调队列
+    dfd.notify();
+},1000);
+
+// 注册进行中回调
+dfd.progress(function(){
+    alert(222);
+});
+
+1 秒后，先弹 111，再弹 222。（和上面的运行结果一样）
+
+例子6：
+$.ajax({
+    url : 'xxx.php',
+    success : function(){
+        alert('成功');
+    },
+    error : function(){
+        alert('失败');
+    }
+});
+
+相当于：
+$.ajax('xxx.php').done(function(){alert('成功')}).fail(function(){alert('失败')});
+
+例子7：【成功】 或 【失败】 的状态只能改变一次
+var dfd = $.Deferred();
+
+setInterval(function(){
+    dfd.resolve();
+},1000);
+
+dfd.done(function(){
+    alert('成功');
+}).fail(function(){
+    alert('失败');
+});
+
+虽然循环调用 resolve（），但只会一次弹出 ’成功‘
+
+例子8：【进行中】可以多次触发
+var dfd = $.Deferred();
+
+setInterval(function(){
+    dfd.notify();
+},1000);
+
+dfd.done(function(){
+    alert('成功');
+}).fail(function(){
+    alert('失败');
+}).progress(function(){
+    alert('进行中');
+});
+
+循环调用 notify（），循环弹出 ’进行中‘
+
+例子9：
+var cb = $.Callbacks('memory');
+
+cb.add(function(){
+    alert(1);
+});
+
+cb.fire();
+
+cb.add(function(){
+    alert(2);
+});
+
+“记忆功能”，一次弹出 1，2
+
+例子10：
+var cb = $.Callbacks('memory');
+
+cb.add(function(){
+    alert(1);
+});
+
+cb.fire();
+
+$('input').click(function(){
+    cb.add(function(){
+        alert(2);
+    });
+});
+
+先弹出 1，点击 input 按钮时，才会弹出 2，不点就不会弹，每点一次就会弹出一次 2
+
+例子11：
+var dfd = $.Deferred();
+
+serTimeout(function(){
+    dfd.resolve();
+},1000);
+
+dfd.done(function(){
+    alert('aaa');
+});
+
+$('input').click(function(){
+    dfd.done(function(){
+        alert('bbb');
+    });
+});
+
+1 秒后弹出 aaa，后面每点击一次按钮弹出一次 bbb
+
+例子12：
+function aaa(){
+    var dfd = $.Deferred();
+    setTimeout(function(){
+        dfd.resolve();
+    });
+    return dfd;
+}
+
+aaa().done(function(){
+    alert('成功');
+}).fail(function(){
+    alert('失败')
+});
+
+1 秒后弹 ’成功‘
+
+例子13：
+function aaa(){
+    var dfd = $.Deferred();
+    setTimeout(function(){
+        dfd.resolve();
+    });
+    return dfd;
+}
+
+var newDfd = aaa();
+
+newDfd.done(function(){
+    alert('成功');
+}).fail(function(){
+    alert('失败')
+});
+
+newDfd.reject();
+
+立即弹出 ’失败‘。
+
+这里在 aaa 函数外调用 reject 改变了延迟对象的’状态‘。
+
+例子13：promise 对象就不可以修改状态了
+function aaa(){
+    var dfd = $.Deferred();
+    setTimeout(function(){
+        dfd.resolve();
+    });
+    return dfd.promise(); 
+    // promise 方法没有参数，就是返回 promise 对象
+}
+
+var newDfd = aaa();
+
+newDfd.done(function(){
+    alert('成功');
+}).fail(function(){
+    alert('失败')
+});
+
+newDfd.reject();
+
+1 秒后弹出 ’成功‘，并且下面的 reject 方法还会报错，newDfd.reject 不是一个函数（undefined）
+
+ */
+
 jQuery.extend({
 
 	Deferred: function( func ) {
@@ -4475,13 +4719,54 @@ jQuery.extend({
 				},
 				// Get a promise for this deferred
 				// If obj is provided, the promise aspect is added to the object
+                // 有参数，参数就继承 promise
+                // 没有参数，就返回 promise
+                // 疑问，函数里的 promise 到底是指包含这个函数的 promise 对象，还是当前的 promise 属性？？
+                /*
+                做个试验：
+                var promise = {
+                        promise : function(){
+                            console.log(typeof promise);
+                        }
+                    };
+                promise.promise()
+                // object 
+                也就是说，函数里的 promise 指的是外层的对象，而不是里面的 promise 属性。确实应该这样，毕竟是属性，又不是函数名。
+                
+                var promise = {
+                        promise : function promise(){
+                            console.log(typeof promise);
+                        }
+                    };
+                promise.promise()
+                // function
+                这样写，函数里的 promise 就是指当前函数了。
+                 */
 				promise: function( obj ) {
 					return obj != null ? jQuery.extend( obj, promise ) : promise;
 				}
 			},
 			deferred = {};
 
+        /*
+        理一理，promise 对象下有这些方法：
+        state、always 、then、promise、pipe、done、fail、progress
+
+        deferred 对象下有这些方法：
+        resolve、reject、notify
+
+        promise.promise( deferred ); 
+        这句使得 deferred 继承 promise，即 promise 的方法全复制给 deferred
+
+        所以，deferred 比 promise 多 resolve、reject、notify 等三个方法
+        而 resolve、reject 等方法是可以修改状态的，
+        所以 promise 对象外部不可以修改状态，而 deferred 外部可以修改状态
+        参考上面的【例子13】、【例子14】
+
+         */
+
 		// Keep pipe for back-compat
+        // 两个方法共用一段代码
 		promise.pipe = promise.then;
 
 		// Add list-specific methods
@@ -4492,9 +4777,9 @@ jQuery.extend({
 
 			// promise[ done | fail | progress ] = list.add
             /* 
-            promise[ "done" ] = $.callbacks("once memory").add
-            promise[ "fail" ] = $.callbacks("once memory").add
-            promise[ "progress" ] = $.callbacks("memory").add
+            promise[ "done" ] = $.Callbacks("once memory").add
+            promise[ "fail" ] = $.Callbacks("once memory").add
+            promise[ "progress" ] = $.Callbacks("memory").add
             */
 			promise[ tuple[1] ] = list.add;
 
