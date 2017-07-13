@@ -373,6 +373,22 @@ jQuery.fn = jQuery.prototype = {
 	},
 
     // DOM 加载的接口
+    /*
+    $(document).ready(function($){
+        // 回调,参数$为jQuery引用
+    });
+    $(function($){
+        // 这是上边那种形式的快捷方式而已
+    });
+    $("#id").ready(function($){
+        // 这种方式跟第一种本质是一样的，
+        // 并不是代表 #id 这个节点 ready 的时候触发
+    })
+
+    $(document).ready(fn)、$("#id").ready(fn) 等都调用：
+    jQuery.ready.promise().done( fn );
+
+    */
 	ready: function( fn ) {
 		// Add the callback
 		jQuery.ready.promise().done( fn );
@@ -686,12 +702,22 @@ jQuery.extend({
 	// Handle when the DOM is ready
     // 准备DOM触发 
     // 这个 ready 是工具方法，$.ready，不是实例方法 $().ready
+    /*
+    ready 的实参一般为空，即 undefined，
+    只有 holdReady 方法中调用时为 true，jQuery.ready( true );
+    */
 	ready: function( wait ) {
 
 		// Abort if there are pending holds or we're already ready
-        // wait 为 true 时，若 jQuery.readyWait 不为 0，要就是说锁住了没有释放，不继续往下执行；
+        // wait 为 true 时，若 jQuery.readyWait 不为 0，说明锁住了没有释放，不继续往下执行；
         // wait 为 false 时，若 jQuery.isReady 为真，说明 dom 已经加载完了，也不继续往下执行
         // jQuery.isReady 默认为 false
+        /*
+        ①  wait === true 说明，ready 方法被 holdReady 锁住了，这里仅仅解锁一次锁住，
+            如果解锁后，发现还是锁住状态，就不能继续往下走了
+        ②  wait !== true，一般情况下都是这样。如果 isReady 是 true，返回；
+        ③  wait !== true，isReady 是 false，往下走
+        */
 		if ( wait === true ? --jQuery.readyWait : jQuery.isReady ) {
 			return;
 		}
@@ -701,20 +727,22 @@ jQuery.extend({
 		jQuery.isReady = true;
 
 		// If a normal DOM Ready event fired, decrement, and wait if need be
+        // ③  wait !== true，isReady 是 false，往下走，走到这发现 jQuery.readyWait 大于 0，还是得返回
+        // 归根结底，一定要等到 jQuery.readyWait 为 0 才能继续往下走，触发回调方法队列
 		if ( wait !== true && --jQuery.readyWait > 0 ) {
 			return;
 		}
 
 		// If there are functions bound, to execute
         /* 
-        这句使得待执行的回调函数的 this 执行 document，实参是 jQuery 
+        这句使得待执行的回调函数的 this 指向 document，第一个实参指向 jQuery 
         例如：
         $(function(arg){
             console.log(this);  // document
             console.log(arg);   // jQuery
         });
-
         */
+        // 触发回调队列
 		readyList.resolveWith( document, [ jQuery ] );
 
 		// Trigger any bound ready events
@@ -723,6 +751,13 @@ jQuery.extend({
         $(document).on('ready',function(){
             // code
         })
+
+        从这也可以看出两种绑定方式的执行顺序：
+        
+        ① $(document).on('ready',fn2);
+        ② $(document).ready(fn1);
+
+        fn1 会比 fn2 先触发
          */
 		if ( jQuery.fn.trigger ) {
 			jQuery( document ).trigger("ready").off("ready");
@@ -5231,6 +5266,16 @@ jQuery.support = (function( support ) {
 		select = document.createElement("select"),
 		opt = select.appendChild( document.createElement("option") );
 
+    /*
+    appendChild 方法返回被添加的那个节点：eg:
+
+    var select = document.createElement("select");
+    var option =  document.createElement("option");
+    var node = select.appendChild(option);
+    option === node 
+    // true
+    */
+
 	// Finish early in limited environments
     // 基本上所有浏览器 input.type 值都默认为 "text"，所以都不会在这里就返回
 	if ( !input.type ) {
@@ -5258,6 +5303,12 @@ jQuery.support = (function( support ) {
 	// Make sure checked status is properly cloned
 	// Support: IE9, IE10
     // 复选框选中，克隆这个复选框，克隆节点是否也是选中
+    /*
+    cloneNode(deep) 方法创建节点的拷贝，并返回该副本。
+    cloneNode(deep) 方法克隆所有属性以及它们的值。
+    如果您需要克隆所有后代，请把 deep 参数设置 true，否则设置为 false。
+    返回值是被克隆的节点
+    */
 	input.checked = true;
 	support.noCloneChecked = input.cloneNode( true ).checked;
 
@@ -5268,6 +5319,7 @@ jQuery.support = (function( support ) {
 
 	// Check if an input maintains its value after becoming a radio
 	// Support: IE9, IE10
+    // input 变成 radio 后是否保持原来的 value
 	input = document.createElement("input");
 	input.value = "t";
 	input.type = "radio";
@@ -5281,17 +5333,23 @@ jQuery.support = (function( support ) {
 
 	// Support: Safari 5.1, Android 4.x, Android 2.3
 	// old WebKit doesn't clone checked state correctly in fragments
+    // 旧的 WebKit，克隆 fragment 节点，如果该节点下有 input，那么 input 的 checkd 状态不会被复制
 	support.checkClone = fragment.cloneNode( true ).cloneNode( true ).lastChild.checked;
 
 	// Support: Firefox, Chrome, Safari
 	// Beware of CSP restrictions (https://developer.mozilla.org/en/Security/CSP)
 	support.focusinBubbles = "onfocusin" in window;
 
+    /*
+    background-clip: border-box|padding-box|content-box;
+    background-clip 属性规定背景的绘制区域
+    */
 	div.style.backgroundClip = "content-box";
 	div.cloneNode( true ).style.backgroundClip = "";
 	support.clearCloneStyle = div.style.backgroundClip === "content-box";
 
 	// Run tests that need a body at doc ready
+    // 剩下的检查需要在 dom 加载完成后来执行
 	jQuery(function() {
 		var container, marginDiv,
 			// Support: Firefox, Android 2.3 (Prefixed box-sizing versions).
@@ -5314,14 +5372,17 @@ jQuery.support = (function( support ) {
 
 		// Workaround failing boxSizing test due to offsetWidth returning wrong value
 		// with some non-1 values of body zoom, ticket #13543
+        // zoom是放大页面的属性，等于1的时候，不放大也不缩小
 		jQuery.swap( body, body.style.zoom != null ? { zoom: 1 } : {}, function() {
 			support.boxSizing = div.offsetWidth === 4;
+            // 怪异模式下，等于4，支持boxSizing，所有浏览器都支持
 		});
 
 		// Use window.getComputedStyle because jsdom on node.js will break without it.
 		if ( window.getComputedStyle ) {
 			support.pixelPosition = ( window.getComputedStyle( div, null ) || {} ).top !== "1%";
 			support.boxSizingReliable = ( window.getComputedStyle( div, null ) || { width: "4px" } ).width === "4px";
+            // IE下，如果是怪异模式，width不等于4px，需要减去padding，border
 
 			// Support: Android 2.3
 			// Check if div with explicit width and no margin-right incorrectly
@@ -5354,6 +5415,13 @@ jQuery.support = (function( support ) {
 	6. Provide a clear path for implementation upgrade to WeakMap in 2014
 */
 var data_user, data_priv,
+    /*
+    匹配 [xxx] 或 {xxx} 结尾
+    eg:
+    rbrace.exec('{123}')  ->  ["{123}", index: 0, input: "{123}"]
+    rbrace.exec('sas{123}') -> ["{123}", index: 3, input: "sas{123}"]
+    rbrace.exec('sas[123]') -> ["[123]", index: 3, input: "sas[123]"]
+    */
 	rbrace = /(?:\{[\s\S]*\}|\[[\s\S]*\])$/,
 	rmultiDash = /([A-Z])/g;
 
@@ -5361,11 +5429,68 @@ function Data() {
 	// Support: Android < 4,
 	// Old WebKit does not have Object.preventExtensions/freeze method,
 	// return new empty object instead with no [[set]] accessor
+    /*
+    Object.defineProperty(obj, prop, descriptor) 
+    直接在一个对象上定义一个新属性，或者修改一个对象的现有属性，并返回这个对象。
+    其中：
+    obj：要在其上定义属性的对象
+    prop：要定义或修改的属性的名称
+    descriptor：将被定义或修改的属性描述符
+
+    eg：
+    ① 例：
+    var obj = {};
+    Object.defineProperty(obj, "key", {
+      enumerable: false,
+      configurable: false,
+      writable: false, // 不可写
+      value: "static"
+    });
+    obj.key
+    // "static"
+
+    obj.key = 'hello';
+    obj.key
+    // 还是 "static"，不能修改
+
+    ② 例：
+    function Archiver() {
+      var temperature = null;
+      var archive = [];
+
+      Object.defineProperty(this, 'temperature', {
+        get: function() {
+          console.log('get!');
+          return temperature;
+        },
+        set: function(value) {
+          temperature = value;
+          archive.push({ val: temperature });
+        }
+      });
+
+      this.getArchive = function() { return archive; };
+    }
+
+    var arc = new Archiver();
+
+    arc.temperature; // 打印 'get!'，返回 null
+    arc.temperature === null // true
+
+    arc.temperature = 11;
+    arc.temperature = 13;
+    arc.getArchive(); // [{ val: 11 }, { val: 13 }]
+    */
 	Object.defineProperty( this.cache = {}, 0, {
 		get: function() {
 			return {};
 		}
 	});
+    /*
+    var data = new Data();
+    data.cache[0] // {}
+    data.expando  // "jQuery2030182001339212814580.7107637158134246"
+    */
 
 	this.expando = jQuery.expando + Math.random();
 }
@@ -5375,12 +5500,14 @@ Data.uid = 1;
 Data.accepts = function( owner ) {
 	// Accepts only:
 	//  - Node
-	//    - Node.ELEMENT_NODE
-	//    - Node.DOCUMENT_NODE
+	//    - Node.ELEMENT_NODE 1
+	//    - Node.DOCUMENT_NODE 9
 	//  - Object
 	//    - Any
 	return owner.nodeType ?
 		owner.nodeType === 1 || owner.nodeType === 9 : true;
+    // ① 如果有 nodeType 属性，nodeType 是 1 或 9，就返回 true，否则返回 false；
+    // ② 如果没有 nodeType 属性，直接返回 true。
 };
 
 Data.prototype = {
@@ -5388,6 +5515,7 @@ Data.prototype = {
 		// We can accept data for non-element nodes in modern browsers,
 		// but we should not, see #8335.
 		// Always return the key for a frozen object.
+        // 节点类型不是 1 也不是 9，就直接返回 0
 		if ( !Data.accepts( owner ) ) {
 			return 0;
 		}
@@ -5397,6 +5525,7 @@ Data.prototype = {
 			unlock = owner[ this.expando ];
 
 		// If not, create one
+        // owner 对象没有 cache key
 		if ( !unlock ) {
 			unlock = Data.uid++;
 
@@ -5544,7 +5673,89 @@ Data.prototype = {
 data_user = new Data();
 data_priv = new Data();
 
+/*
+每个节点的 dom[expando] 的值都设为一个自增的变量 id，保持全局唯一性。 
+这个 id 的值就作为 cache 的 key 用来关联 DOM 节点和数据。
+也就是说 cache[id] 就取到了这个节点上的所有缓存，
+即id就好比是打开一个房间( DOM 节点)的钥匙。
 
+例如：Body元素 expando：uid
+
+jQuery203054840829130262140.37963378243148327: 3
+
+先在 dom 元素上找到 expando 对应值，也就 uid，然后通过这个 uid 找到数据 cache 对象中的内容
+
+所以cache对象结构应该像下面这样:
+
+cache = {
+    "uid1": { // DOM节点1缓存数据，
+        "name1": value1,
+        "name2": value2
+    },
+    "uid2": { // DOM节点2缓存数据，
+        "name1": value1,
+        "name2": value2
+    }
+    // ......
+};
+
+
+（1）存储数据 $("body").data('zx',520);
+
+ ① 为了不让数据和 dom 直接关联，所以会把数据存储在一个 cache 对象上；
+ ② 产生一个 unlock = Data.uid++ 的标记号；
+ ③ 把 unlock 标记号，作为属性赋给 $("body") 对应的节点；
+ ④ 在 cache 对象上以 unlock 为属性开辟新的空间用于存储 'zx' 数据
+
+（2）获取数据 $("body").data('zx');
+
+ ① 从 $("body") 节点上获取到 unlock 属性；
+ ② 通过 unlock 在 cache 中获取到对应的数据 
+
+*/
+
+/*
+① data 作为 jQuery 实例方法
+var div1 = $("#div");
+var div2 = $("#div");
+
+div1.data('a',1111);
+div2.data('a',2222);
+
+div1.data('a'); // 2222
+div2.data('a'); // 2222
+
+② data 作为 jQuery 静态方法
+var div1 = $("#div");
+var div2 = $("#div");
+
+$.data(div1,'b',1111);
+$.data(div2,'b',2222);
+
+$.data(div1,'b'); // 1111
+$.data(div2,'b'); // 2222
+
+③ 为对象附加数据
+var obj = {};
+
+$.data(obj, {
+    name1: 'zx',
+    name2: 'zc'
+});
+
+$.data(obj);
+// {name1: "zx", name2: "zc"}
+
+④ 为 dom 节点附加数据
+var bd = $('body');
+
+bd.data('foo',52);
+
+bd.data('foo')
+// 52
+
+
+*/
 jQuery.extend({
 	acceptData: Data.accepts,
 
