@@ -5032,16 +5032,123 @@ jQuery.extend({
 		return deferred;
 	},
 
+    /*
+    ① 延迟对象基本使用
+    function aaa(){
+        var dfd = $.Deferred();
+        dfd.resolve();
+        return dfd;
+    }
+
+    aaa().done(function(){
+        alert('成功');
+    });
+
+    弹出 ‘成功’
+
+    ② 两个延迟对象都完成才触发完成回调
+    function aaa(){
+        var dfd = $.Deferred();
+        dfd.resolve();
+        return dfd;
+    }
+    function bbb(){
+        var dfd = $.Deferred();
+        dfd.resolve();
+        return dfd;
+    }
+    $.when(aaa(),bbb()).done(function(){
+        alert('成功');
+    });
+
+    两个延迟对象都【成功】了，弹出 ‘成功’
+
+    必须都成功，才会触发成功的回调函数；
+    
+
+    ③ 只要有一个失败，就会触发失败的回调
+    function aaa(){
+        var dfd = $.Deferred();
+        dfd.resolve();
+        return dfd;
+    }
+    function bbb(){
+        var dfd = $.Deferred();
+        dfd.reject();
+        return dfd;
+    }
+    $.when(aaa(),bbb()).done(function(){
+        alert('成功');
+    }).fail(function(){
+        alert('失败');
+    });
+
+    有一个延迟对象 bbb() 失败了,所以弹出 ’失败‘
+
+    ④ $.when() 的参数如果不是延迟对象，那就相当于跳过该参数
+    function aaa(){
+        var dfd = $.Deferred();
+        dfd.resolve();
+        return dfd;
+    }
+    function bbb(){
+        var dfd = $.Deferred();
+        dfd.reject();
+    }
+    $.when(aaa(),bbb()).done(function(){
+        alert('成功');
+    }).fail(function(){
+        alert('失败');
+    });
+
+    bbb() 没有返回延迟对象，于是只有 aaa() 延迟对象，弹出 ’成功‘
+    
+    ⑤ 如果参数都不是延迟对象，那都跳过
+    $.when(123，456).done(function(){
+        alert('成功');
+    }).fail(function(){
+        alert('失败');
+    });
+
+    $.when().done(function(){
+        alert('成功');
+    }).fail(function(){
+        alert('失败');
+    });
+
+    以上都是弹出 ’成功‘
+
+    ⑥ 如果参数不会延迟对象，会把参数传递给成功回调函数
+    $.when(123,456).done(function(){
+        console.log(arguments[0]);
+        console.log(arguments[1]);
+        alert('成功');
+    }).fail(function(){
+        alert('失败');
+    });
+
+    以上打印的 arguments[0]、arguments[1] 分别是 123 ，456
+
+     */
+
 	// Deferred helper
+    // 延迟对象的辅助方法
+    // $.when() 返回 deferred.promise();
 	when: function( subordinate /* , ..., subordinateN */ ) {
 		var i = 0,
 			resolveValues = core_slice.call( arguments ),
 			length = resolveValues.length,
 
 			// the count of uncompleted subordinates
+            // ① length 为 0，也就是没有参数时，remaining 为 0
+            // ② length 为 1，也就是传 1 个参数，若参数是延迟对象，remaining 为 1，否则为 0
+            // ③ length 大于 1，参数包括延迟对象和非延迟对象，remaining 为 length
 			remaining = length !== 1 || ( subordinate && jQuery.isFunction( subordinate.promise ) ) ? length : 0,
 
 			// the master Deferred. If resolveValues consist of only a single Deferred, just use that.
+            // ① length 为 0，remaining 为 0，deferred 为 jQuery.Deferred()
+            // ② length 为 1，有一个参数，若参数是延迟对象，deferred 为 subordinate，否则 deferred 为 jQuery.Deferred()
+            // ③ length 大于 1，remaining 为 length 大于 1，deferred 为 jQuery.Deferred()
 			deferred = remaining === 1 ? subordinate : jQuery.Deferred(),
 
 			// Update function for both resolve and progress values
@@ -5051,6 +5158,7 @@ jQuery.extend({
 					values[ i ] = arguments.length > 1 ? core_slice.call( arguments ) : value;
 					if( values === progressValues ) {
 						deferred.notifyWith( contexts, values );
+                    // remaining 为 0，即所有的延迟对象都【成功】了，触发 master Deferred 的 resolveWith
 					} else if ( !( --remaining ) ) {
 						deferred.resolveWith( contexts, values );
 					}
@@ -5065,11 +5173,15 @@ jQuery.extend({
 			progressContexts = new Array( length );
 			resolveContexts = new Array( length );
 			for ( ; i < length; i++ ) {
+                // 当前参数是延迟对象，【成功】或者【进行中】都调用函数 updateFunc
 				if ( resolveValues[ i ] && jQuery.isFunction( resolveValues[ i ].promise ) ) {
 					resolveValues[ i ].promise()
+                        // done、fail、progress 等方法的参数应该是函数的定义，这里却是函数的执行
+                        // 因为 updateFunc 函数返回值就是一个新的函数
 						.done( updateFunc( i, resolveContexts, resolveValues ) )
-						.fail( deferred.reject )
+						.fail( deferred.reject ) // 只要有一个延迟对象失败，master Deferred 就失败了
 						.progress( updateFunc( i, progressContexts, progressValues ) );
+                // 当前参数不是延迟对象，剩余延迟对象个数直接减 1
 				} else {
 					--remaining;
 				}
@@ -5077,6 +5189,9 @@ jQuery.extend({
 		}
 
 		// if we're not waiting on anything, resolve the master
+        // ① length 为 0，remaining 为 0，deferred 为 jQuery.Deferred()，触发 resolveWith，即触发 resolve
+        // ② length 为 1，参数不为延迟对象，remaining 也是为 0，deferred 为 jQuery.Deferred()
+        // resolveValues = core_slice.call( arguments )
 		if ( !remaining ) {
 			deferred.resolveWith( resolveContexts, resolveValues );
 		}
@@ -5084,6 +5199,31 @@ jQuery.extend({
 		return deferred.promise();
 	}
 });
+
+
+// 功能检测，并不修复兼容性
+// 后面的 hooks 来修复兼容问题
+/*
+jQuery.support 值其实就是一个对象 {...}
+在chrome下面用 for-in 循环把它的值打印出来
+for(var attr in jQuery.support){
+    console.log(attr +' : '+jQuery.support[attr]);
+}
+checkOn : true
+optSelected : true
+reliableMarginRight : true
+boxSizingReliable : true
+pixelPosition : true
+noCloneChecked : true
+optDisabled : true
+radioValue : true
+checkClone : true
+focusinBubbles : false
+clearCloneStyle : true
+cors : true
+ajax : true
+boxSizing : true
+ */
 jQuery.support = (function( support ) {
 	var input = document.createElement("input"),
 		fragment = document.createDocumentFragment(),
@@ -5092,6 +5232,7 @@ jQuery.support = (function( support ) {
 		opt = select.appendChild( document.createElement("option") );
 
 	// Finish early in limited environments
+    // 基本上所有浏览器 input.type 值都默认为 "text"，所以都不会在这里就返回
 	if ( !input.type ) {
 		return support;
 	}
@@ -5100,19 +5241,23 @@ jQuery.support = (function( support ) {
 
 	// Support: Safari 5.1, iOS 5.1, Android 4.x, Android 2.3
 	// Check the default checkbox/radio value ("" on old WebKit; "on" elsewhere)
+    // checkbox 的值是否是 on
 	support.checkOn = input.value !== "";
 
 	// Must access the parent to make an option select properly
 	// Support: IE9, IE10
+    // 下拉菜单的第一个子项是否选中
 	support.optSelected = opt.selected;
 
 	// Will be defined later
+    // 先写成这样，后面会改 
 	support.reliableMarginRight = true;
 	support.boxSizingReliable = true;
 	support.pixelPosition = false;
 
 	// Make sure checked status is properly cloned
 	// Support: IE9, IE10
+    // 复选框选中，克隆这个复选框，克隆节点是否也是选中
 	input.checked = true;
 	support.noCloneChecked = input.cloneNode( true ).checked;
 
