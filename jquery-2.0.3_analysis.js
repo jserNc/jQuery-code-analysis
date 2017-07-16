@@ -5343,6 +5343,24 @@ jQuery.support = (function( support ) {
     /*
     background-clip: border-box|padding-box|content-box;
     background-clip 属性规定背景的绘制区域
+    
+    不光是这个属性，其他的背景属性，如 background-color 等都有这个问题
+    eg:
+    var div = document.createElement('div');
+    div.style.backgroundColor = 'red';
+    div.cloneNode(true).style.backgroundColor = '';
+    console.log(div.style.backgroundColor);
+
+    ie 浏览器返回空，也就是说，克隆一个节点后，给新节点背景属性赋值，源节点的背景属性也被修改了
+
+    jquery 统一了这个问题
+    eg:
+    var div = $('<div>');
+    div.css('backgroundColor','red');
+    div.clone().css('backgroundColor','');
+    console.log('div.css('backgroundColor',''));
+    
+    这样所有浏览器都返回 red
     */
 	div.style.backgroundClip = "content-box";
 	div.cloneNode( true ).style.backgroundClip = "";
@@ -5363,11 +5381,14 @@ jQuery.support = (function( support ) {
 
 		container = document.createElement("div");
 		container.style.cssText = "border:0;width:0;height:0;position:absolute;top:0;left:-9999px;margin-top:1px";
+        // left 设置成 -9999px 是为了不让这个元素在可见范围里，影响页面功能
+        // margin-top:1px 是 jQuery 老版本中检测其他属性用到的，这个版本用不上
 
 		// Check box-sizing and margin behavior.
 		body.appendChild( container ).appendChild( div );
 		div.innerHTML = "";
 		// Support: Firefox, Android 2.3 (Prefixed box-sizing versions).
+        // 怪异模式
 		div.style.cssText = "-webkit-box-sizing:border-box;-moz-box-sizing:border-box;box-sizing:border-box;padding:1px;border:1px;display:block;width:4px;margin-top:1%;position:absolute;top:1%";
 
 		// Workaround failing boxSizing test due to offsetWidth returning wrong value
@@ -5375,14 +5396,17 @@ jQuery.support = (function( support ) {
         // zoom是放大页面的属性，等于1的时候，不放大也不缩小
 		jQuery.swap( body, body.style.zoom != null ? { zoom: 1 } : {}, function() {
 			support.boxSizing = div.offsetWidth === 4;
+            // offsetWidth 包括 width + padding + border，怪异模式下就是 width
             // 怪异模式下，等于4，支持boxSizing，所有浏览器都支持
 		});
 
 		// Use window.getComputedStyle because jsdom on node.js will break without it.
 		if ( window.getComputedStyle ) {
+            // 当元素属性是百分数时，只有 Safari 返回百分数，其他浏览器都会返回像素值
 			support.pixelPosition = ( window.getComputedStyle( div, null ) || {} ).top !== "1%";
 			support.boxSizingReliable = ( window.getComputedStyle( div, null ) || { width: "4px" } ).width === "4px";
             // IE下，如果是怪异模式，width不等于4px，需要减去padding，border
+            // 其他浏览器，width 都是 4px
 
 			// Support: Android 2.3
 			// Check if div with explicit width and no margin-right incorrectly
@@ -5402,6 +5426,50 @@ jQuery.support = (function( support ) {
 
 	return support;
 })( {} );
+
+/*
+① attr 不合适设置大量数据
+$.('#div1').attr('name','hello');
+$.('#div1').attr('name')  // hello
+
+相当于：
+
+document.getElemntById('div1').setAttribute('name','hello');
+document.getElemntById('div1').getAttribute('name'); // hello
+
+② prop 不适合设置大量数据
+$.('#div1').prop('name','hello');
+$.('#div1').prop('name')  // hello
+
+相当于：
+
+document.getElemntById('div1').name = 'hello';
+document.getElemntById('div1').name;  // hello
+
+③ data 可以设置大量数据
+$.('#div1').data('name','hello');
+$.('#div1').data('name')  // hello
+
+④ 内存泄漏
+不用的内存应该回收，如果不用的变量不回收，就会导致内存泄漏。
+
+js 中导致内存泄漏：
+
+【dom 元素】和【对象】之间互相引用，大部分浏览器会出现内存泄漏
+
+var oDiv = document.getElemntById('div1');
+var obj = {};
+
+oDiv.name = obj;
+obj.age = oDiv;
+
+$.('#div1').attr('name',obj);
+如果 obj 的某个属性又引用了 #div，就会造成内存泄漏，
+
+【不过 data 方法会优化这一点，不会造成内存泄漏】
+
+
+ */
 
 /*
 	Implementation Summary
@@ -5425,6 +5493,40 @@ var data_user, data_priv,
 	rbrace = /(?:\{[\s\S]*\}|\[[\s\S]*\])$/,
 	rmultiDash = /([A-Z])/g;
 
+/*
+① 一般情况下，对象的属性是可以随意修改的
+var obj = {name:'hello'};
+obj.name = 'hi';
+
+console.log(obj.name);  // hi
+
+② Object.preventExtensions/freeze 使得对象的属性不能修改
+var obj = {name:'hello'};
+Object.freeze(obj);
+obj.name = 'hi';
+
+console.log(obj.name);  // hello
+
+③ Object.defineProperty
+var obj = {name: 'hello'};
+
+Object.defineProperty( obj, 0, {
+    get: function() {
+        return {};
+    }
+});
+
+console.log(obj[0]);  // {}
+obj[0] = 123;         
+console.log(obj[0]);  // {}
+
+这样就为 obj 对象添加了属性 0，这个属性只能获取，因为没有 set 方法，所以不能修改
+
+get 或 set 不是必须成对出现，任写其一就可以。如果不设置方法，则get和set的默认值为undefined
+当使用了 get 或 set 方法，不允许使用writable和value这两个属性
+
+ */
+
 function Data() {
 	// Support: Android < 4,
 	// Old WebKit does not have Object.preventExtensions/freeze method,
@@ -5436,6 +5538,7 @@ function Data() {
     obj：要在其上定义属性的对象
     prop：要定义或修改的属性的名称
     descriptor：将被定义或修改的属性描述符
+
 
     eg：
     ① 例：
@@ -5488,10 +5591,11 @@ function Data() {
 	});
     /*
     var data = new Data();
-    data.cache[0] // {}
+    data.cache[0] // {}   这个属性只有 get 方法，所以不能设置
     data.expando  // "jQuery2030182001339212814580.7107637158134246"
     */
 
+    // 重复的概率很小，忽略不计，当做唯一的
 	this.expando = jQuery.expando + Math.random();
 }
 
@@ -5511,38 +5615,93 @@ Data.accepts = function( owner ) {
 };
 
 Data.prototype = {
+    // 返回 owner 节点在 cache 中对于的属性名
+    // 如节点 node1 对应 cache 的属性 1，即 cache[1]
+    // 如果 cache[1] 已经存在，那么再次给 node1 添加数据，就不会再创建新的 cache 属性了，直接在 cache[1] 下添加即可
 	key: function( owner ) {
 		// We can accept data for non-element nodes in modern browsers,
 		// but we should not, see #8335.
 		// Always return the key for a frozen object.
         // 节点类型不是 1 也不是 9，就直接返回 0
+        /*
+        cache 的结构大致如下：
+        cache = {
+            "0": { },
+            "1": { // DOM节点1缓存数据，
+                "name1": value1,
+                "name2": value2
+            },
+            "2": { // DOM节点2缓存数据，
+                "name1": value1,
+                "name2": value2
+            }
+            // ......
+        };
+        cache[0] 是不可以修改的，剩下的 cache[1]、cache[2]... 是可以修改的
+
+        这里返回的 key 值 0 ,就是 cache 的索引
+
+        也就是所有不满足 owner.nodeType === 1 || owner.nodeType === 9 的节点都共用 cache[0] 这个只读空对象
+         */
+
 		if ( !Data.accepts( owner ) ) {
 			return 0;
 		}
 
 		var descriptor = {},
 			// Check if the owner object already has a cache key
+            // 在 owner 节点上找 owner["jQuery2030182001339212814580.7107637158134246"] 属性，看是否存在
 			unlock = owner[ this.expando ];
 
 		// If not, create one
-        // owner 对象没有 cache key
+        // 正常情况下没有这个属性
 		if ( !unlock ) {
 			unlock = Data.uid++;
 
 			// Secure it in a non-enumerable, non-writable property
 			try {
+                // 为 owner 节点添加只读的 jQuery2030182001339212814580.7107637158134246 属性
 				descriptor[ this.expando ] = { value: unlock };
 				Object.defineProperties( owner, descriptor );
+                /*
+                
+                注意这里用的是 Object.defineProperties 而不是 Object.defineProperty
+                Object.defineProperties( owner, descriptors )：可以同时给几个属性添加描述
+                Object.defineProperty(obj, prop, descriptor)：给一个属性添加描述
+
+                Object.defineProperties 的第二个参数示例：
+                descriptor = {
+                    jQuery2030182001339212814580.7107637158134246 : {value : 1},
+                    jQuery2030182001339212814580.3427632463276477 : {value : 2},
+                    jQuery2030182001339212814580.5498736534657347 : {value : 3}
+                };
+                这里的 jQuery2030182001339212814580.7107637158134246 相当于 prop；{value : 1} 相当于 descriptor
+
+                其中：
+                value: 设置属性的值
+                writable: 值是否可以重写。默认是 false，不可以重写
+                enumerable: 目标属性是否可以被枚举。默认是 false，不可以枚举
+                configurable: 目标属性是否可以被删除或是否可以再次修改特性。默认是 false，不允许配置修改
+
+                这里只写了 value 字段，其他没写的字段默认都是 false。
+                所以说这个 jQuery2030182001339212814580.7107637158134246 属性是不可以改的。
+
+                 */
 
 			// Support: Android < 4
 			// Fallback to a less secure definition
 			} catch ( e ) {
 				descriptor[ this.expando ] = unlock;
 				jQuery.extend( owner, descriptor );
+                /*
+                这种写法 jQuery2030182001339212814580.7107637158134246 属性是可以改的。
+                只是某些版本浏览器不支持以上写法，所以才采取这种方法退而求其次
+                 */
 			}
 		}
 
 		// Ensure the cache object
+        // 在 cache 中开辟一块空间给属性 unlock
 		if ( !this.cache[ unlock ] ) {
 			this.cache[ unlock ] = {};
 		}
@@ -5558,10 +5717,18 @@ Data.prototype = {
 			cache = this.cache[ unlock ];
 
 		// Handle: [ owner, key, value ] args
+        /*
+        对应这种形式：
+        $.data(document.body,'age','27');
+         */
 		if ( typeof data === "string" ) {
 			cache[ data ] = value;
 
 		// Handle: [ owner, { properties } ] args
+        /*
+        对应这种形式：
+        $.data(document.body,{'age':'27','job':it});
+         */
 		} else {
 			// Fresh assignments by object are shallow copied
 			if ( jQuery.isEmptyObject( cache ) ) {
@@ -5624,11 +5791,15 @@ Data.prototype = {
 			unlock = this.key( owner ),
 			cache = this.cache[ unlock ];
 
+        // 没有指定看key值，那 owner 对应的所有的数据都清空
+        // // 对应这种形式： $.removeData(document.body)
 		if ( key === undefined ) {
 			this.cache[ unlock ] = {};
 
 		} else {
 			// Support array or space separated string of keys
+            // key 是数组
+            // 对应这种形式： $.removeData(document.body,['age','job'])
 			if ( jQuery.isArray( key ) ) {
 				// If "name" is an array of keys...
 				// When data is initially created, via ("key", "val") signature,
@@ -5638,13 +5809,16 @@ Data.prototype = {
 				// This will only penalize the array argument path.
 				name = key.concat( key.map( jQuery.camelCase ) );
 			} else {
+                // 转驼峰，如 all-name -> allName
 				camel = jQuery.camelCase( key );
 				// Try the string as a key before any manipulation
 				if ( key in cache ) {
+                    // all-name、allName 这种都要删除
 					name = [ key, camel ];
 				} else {
 					// If a key with the spaces exists, use it.
 					// Otherwise, create an array by matching non-whitespace
+                    // 先转驼峰，转完驼峰还找不到，再去掉空格再找
 					name = camel;
 					name = name in cache ?
 						[ name ] : ( name.match( core_rnotwhite ) || [] );
@@ -5782,25 +5956,93 @@ jQuery.extend({
 	}
 });
 
+/*
+jQuery 中有个常见的原则是：
+
+对于 $() 选择到的一组 jQuery 实例元素：
+如果后面跟的方法是设置操作，会遍历这一组元素，对每一个都进行设置；
+如果后面跟的方法是获取操作，只会获取第一个元素的结果
+
+eg:
+<div id="div1">aaa</div>
+<div>bbb</div>
+<div>ccc</div>
+
+a) $.('div').html('hello');
+// 3 个 div 的内容都变成  hello 了
+
+b) $.('div').html();
+// 只返回第一个 div 的内容 aaa
+ */
 jQuery.fn.extend({
 	data: function( key, value ) {
 		var attrs, name,
-			elem = this[ 0 ],
+			elem = this[ 0 ], // 一组元素里的第一个元素
 			i = 0,
 			data = null;
 
 		// Gets all values
+        /*
+        eg : 
+        $('#div1').data('name','hello');
+        $('#div1').data('age',30);
+
+        console.log($('#div1').data('name');  // hello
+        console.log($('#div1').data();  // {name : "hello", age : 30}
+         */
 		if ( key === undefined ) {
 			if ( this.length ) {
-				data = data_user.get( elem );
+				data = data_user.get( elem );  // 第一个元素对于的所有数据
 
+                /*
+                html5 新属性 data-
+                eg:
+                <div id="div1" data-miaov="妙味">aaa</div>
+                <div id="div2" data-miaov-all="全部妙味">bbb</div>
+
+                $('#div1').get(0).dataset.miaov     // 妙味
+                $('#div2').get(0).dataset.miaovAll  // 全部妙味
+
+                这里的属性也能被 data() 方法找到：
+
+                $('#div1').data('name','hello');
+                $('#div1').data('age',30);
+
+                console.log($('div1').data());
+                // { name:'hello', age:30, miaov:'妙味'}
+
+                如果通过 data 方法了属性 p 那就不会再取 data-p 这个同名的 h5 属性了(以 data 属性添加的为准)：
+                $('#div1').data('name','hello');
+                $('#div1').data('age',30);
+                $('#div1').data('miaov','cool');
+
+                console.log($('div1').data());
+                // { name:'hello', age:30, miaov:'cool'}
+                 */
+                
+                // 最开始没属性 hasDataAttrs，进入 if 语句
 				if ( elem.nodeType === 1 && !data_priv.get( elem, "hasDataAttrs" ) ) {
-					attrs = elem.attributes;
+					attrs = elem.attributes; 
+                    /*
+                    返回元素的所有属性组成的带 length 属性的比较复杂的对象，简单理解成这种：
+                    attrs : {0: {name:id}, 1: {name:data-miaov-all}, length: 2}
+
+                    eg: 
+                    var pg = document.getElementById('page');
+                    var attrs = pg.attributes;;
+                    console.table(attrs)
+                    打印出 attrs 我们看到挺复杂的对象
+                     */ 
+                    
+                    // 把 data- 属性挑出来，加入到 cache 里
 					for ( ; i < attrs.length; i++ ) {
 						name = attrs[ i ].name;
 
 						if ( name.indexOf( "data-" ) === 0 ) {
+                            // data-miaov-allm -> miaovAll
 							name = jQuery.camelCase( name.slice(5) );
+                            // 把 data- 属性加入到 cache 中
+                            // data[name] 存在是有可能的，data[name] 不存在就是 undefined
 							dataAttr( elem, name, data[ name ] );
 						}
 					}
@@ -5812,7 +6054,11 @@ jQuery.fn.extend({
 		}
 
 		// Sets multiple values
+        /*
+        $('div').data({name:'hello',age:30})  这种形式
+         */
 		if ( typeof key === "object" ) {
+            // 对 $('div') 获取到的每一个 div 都进行设置操作
 			return this.each(function() {
 				data_user.set( this, key );
 			});
@@ -5827,9 +6073,11 @@ jQuery.fn.extend({
 			// `value` parameter was not undefined. An empty jQuery object
 			// will result in `undefined` for elem = this[ 0 ] which will
 			// throw an exception if an attempt to read a data cache is made.
+            // 获取
 			if ( elem && value === undefined ) {
 				// Attempt to get data from the cache
 				// with the key as-is
+                // 找到了直接返回
 				data = data_user.get( elem, key );
 				if ( data !== undefined ) {
 					return data;
@@ -5837,6 +6085,7 @@ jQuery.fn.extend({
 
 				// Attempt to get data from the cache
 				// with the key camelized
+                // 转驼峰，找到了直接返回
 				data = data_user.get( elem, camelKey );
 				if ( data !== undefined ) {
 					return data;
@@ -5844,6 +6093,7 @@ jQuery.fn.extend({
 
 				// Attempt to "discover" the data in
 				// HTML5 custom data-* attrs
+                // 找 data- 属性，找到了就返回
 				data = dataAttr( elem, camelKey, undefined );
 				if ( data !== undefined ) {
 					return data;
@@ -5855,6 +6105,28 @@ jQuery.fn.extend({
 
 			// Set the data...
 			this.each(function() {
+                /*
+                $('#div1').data('name-age','hello');
+                在 cache 里会存为： nameAge:'hello'
+                cache = {
+                    1: {
+                        'nameAge':'hello'
+                    }
+                }
+
+                可是如果之前有一个 nameAge 属性，就另当别论：
+                $('#div1').data('nameAge','hi');
+                $('#div1').data('name-age','hello');
+                那就会存为：
+                cache = {
+                    1: {
+                        'nameAge':'hello',
+                        'name-age':'hello'
+                    }
+                }
+                都存为 hello
+                 */
+                
 				// First, attempt to store a copy or reference of any
 				// data that might've been store with a camelCased key.
 				var data = data_user.get( this, camelKey );
@@ -5872,6 +6144,8 @@ jQuery.fn.extend({
 				}
 			});
 		}, null, value, arguments.length > 1, null, true );
+        // arguments.length > 1 设置操作
+        // arguments.length <= 1 获取操作
 	},
 
 	removeData: function( key ) {
@@ -5886,19 +6160,42 @@ function dataAttr( elem, key, data ) {
 
 	// If nothing was found internally, try to fetch any
 	// data from the HTML5 data-* attribute
+    /*
+    rmultiDash = /([A-Z])/g; 找大写字母
+
+    如：
+    dataAttr( elem, 'miaovAll', undefined )
+
+    name = "data-" + 'miaovAll'.replace( rmultiDash, "-$1" ).toLowerCase()
+    // "data-miaov-all"
+     */ 
 	if ( data === undefined && elem.nodeType === 1 ) {
 		name = "data-" + key.replace( rmultiDash, "-$1" ).toLowerCase();
 		data = elem.getAttribute( name );
 
+        // 属性里的值一般是字符串，但是 cache 里存各种类型的值
 		if ( typeof data === "string" ) {
 			try {
 				data = data === "true" ? true :
 					data === "false" ? false :
 					data === "null" ? null :
 					// Only convert to a number if it doesn't change the string
+                    // 字符串数字 -> 数字，如 '100' -> 100
 					+data + "" === data ? +data :
+                    // 字符串对象，转成真正的对象
 					rbrace.test( data ) ? JSON.parse( data ) :
 					data;
+
+                    /*
+                    rbrace = /(?:\{[\s\S]*\}|\[[\s\S]*\])$/
+                    匹配 [xxx] 或 {xxx} 结尾
+                    eg:
+                    rbrace.exec('{123}')  ->  ["{123}", index: 0, input: "{123}"]
+                    rbrace.exec('sas{123}') -> ["{123}", index: 3, input: "sas{123}"]
+                    rbrace.exec('sas[123]') -> ["[123]", index: 3, input: "sas[123]"]
+                    
+                    
+                     */
 			} catch( e ) {}
 
 			// Make sure we set the data so it isn't changed later
@@ -5909,6 +6206,10 @@ function dataAttr( elem, key, data ) {
 	}
 	return data;
 }
+
+
+
+
 jQuery.extend({
 	queue: function( elem, type, data ) {
 		var queue;
