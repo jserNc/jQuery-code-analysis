@@ -6223,7 +6223,7 @@ $.queue(document, 'q1', bbb);
 queue 方法只有2个参数，表示读取队列：
 
 console.log($.queue(document, 'q1'));
-// [aaa(),bbb()]
+// [aaa,bbb]
 
 ② 入队，第三个参数可以为函数组成的数组
 $.queue(document, 'q1', [aaa,bbb]);
@@ -6241,7 +6241,7 @@ $(document).queue('q1',aaa);
 $(document).queue('q1',bbb);
 
 console.log($(document).queue('q1'));
-// [aaa(),bbb()]
+// [aaa,bbb]
 
 // 出队
 $(document).dequeue('q1');  // aaa() -> 打印 1
@@ -6282,6 +6282,14 @@ $('#div1').ckick(function(){
 
 jQuery.extend({
     // 入队，相当于数组的 push 方法
+    /*
+    这个方法既是 setter 又是 getter
+    第一个参数是 dom 元素；
+    第二个参数是队列名称；
+    第三个参数是 function 或 数组
+
+    若是三个参数，就是入队；若是两个参数，就是获取队列
+    */
 	queue: function( elem, type, data ) {
 		var queue;
 
@@ -6301,7 +6309,7 @@ jQuery.extend({
                     $.queue(document, 'q1', [bbb]);
 
                     console.log($.queue(document, 'q1'))
-                    // [bbb()]
+                    // [bbb]
 
                     这说明，如果第三个参数是数组时，不管队列在前面存了什么，都重新初始化
                      */
@@ -6327,8 +6335,10 @@ jQuery.extend({
 		type = type || "fx";
 
 		var queue = jQuery.queue( elem, type ),
+            // queue 只有 2 个参数，返回队列 queue
 			startLength = queue.length,
 			fn = queue.shift(),
+            // 队头的函数
 			hooks = jQuery._queueHooks( elem, type ),
 			next = function() {
 				jQuery.dequeue( elem, type );
@@ -6351,10 +6361,30 @@ jQuery.extend({
 			// clear up the last queue stop function
 			delete hooks.stop;
 			fn.call( elem, next, hooks );
+            /*
+            例：
+            var body = $('body');
+            function cb1(next,hoost) {
+                console.log(11111)
+                next()  
+            }
+
+            function cb2() {
+                console.log(22222)
+            }
+
+            //set
+            $.queue(body, 'aa', cb1); // 第三个参数为function
+            $.queue(body, 'aa', cb2);
+
+            $.dequeue(body, 'aa');
+            // 依次打印 11111、22222
+            */
 		}
 
 		if ( !startLength && hooks ) {
 			hooks.empty.fire();
+            // 清理缓存数据
 		}
 	},
 
@@ -6366,6 +6396,16 @@ jQuery.extend({
 				data_priv.remove( elem, [ type + "queue", key ] );
 			})
 		});
+        /*
+        access 方法进行设置的时候，返回的是第三个参数，所以：
+        第一次进来，_queueHooks 函数的返回值是：
+         {
+			empty: jQuery.Callbacks("once memory").add(function() {
+				data_priv.remove( elem, [ type + "queue", key ] );
+		  }
+          empty 是一个回调对象，并且添加了一个回调函数
+          回调对象 fire 的时候把 type + "queue"、type + "queueHooks" 两个属性都删掉
+        */
 	}
 });
 
