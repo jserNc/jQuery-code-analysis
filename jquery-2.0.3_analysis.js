@@ -6207,10 +6207,81 @@ function dataAttr( elem, key, data ) {
 	return data;
 }
 
+/*
+① 入队，第三个参数必须是函数名
+function aaa(){
+    console.log(1);
+}
+function bbb(){
+    console.log(2);
+}
+$.queue(document, 'q1', aaa);
+$.queue(document, 'q1', bbb);
 
+在 document 元素上建立名为 q1 的队列，然后把 aaa,bbb 方法分别加入到队列里
 
+queue 方法只有2个参数，表示读取队列：
+
+console.log($.queue(document, 'q1'));
+// [aaa(),bbb()]
+
+② 入队，第三个参数可以为函数组成的数组
+$.queue(document, 'q1', [aaa,bbb]);
+
+③ 出队
+$.queue(document, 'q1', [aaa,bbb]);
+$.dequeue(document, 'q1');
+// 打印 1（取出函数 aaa，并且执行 aaa()）
+
+$.dequeue(document, 'q1');
+// 打印 2（执行 bbb()）
+
+④ 实例方法，入队 出队
+$(document).queue('q1',aaa);
+$(document).queue('q1',bbb);
+
+console.log($(document).queue('q1'));
+// [aaa(),bbb()]
+
+// 出队
+$(document).dequeue('q1');  // aaa() -> 打印 1
+$(document).dequeue('q1');  // bbb() -> 打印 2
+
+⑤ 动画
+#div1 { width:100px; height:100px; background:red; position:absolute;}
+
+$('#div1').ckick(function(){
+    $(this).animate({width:300},2000);  其实是调用 setInterval
+    $(this).animate({height:300},2000); 其实是调用 setInterval
+    $(this).animate({left:300},2000);   其实是调用 setInterval
+}); 
+
+先花 2 秒宽度变成 300px，然后花 2 秒高度变成 300px，最后花 2 秒向右移动 300px
+
+一般情况下我们用以上 3 个定时器，不会按照顺序依次执行，肯定会串的，
+而这里的动画确实做到了前一个动画执行完，才开始后一个动画，这种顺序性就是队列机制来保证的
+
+⑥ 入队，出队，animate
+$('#div1').ckick(function(){
+    $(this).animate({width:300},2000).queue('fx',function(){
+        $(this).dequeue(); // dequeue 方法没写实参，默认是 'fx'
+    }).animate({left:300},2000);
+}); 
+
+这个动画队列内部使用的名字就是 fx，中间的入队函数的必须要调用 dequeue 出队，否则后面的动画不会执行。
+
+以上写法相当于：
+
+$('#div1').ckick(function(){
+    $(this).animate({width:300},2000).queue('fx',function(next){
+        next();
+    }).animate({left:300},2000);
+}); 
+
+ */
 
 jQuery.extend({
+    // 入队，相当于数组的 push 方法
 	queue: function( elem, type, data ) {
 		var queue;
 
@@ -6221,15 +6292,37 @@ jQuery.extend({
 			// Speed up dequeue by getting out quickly if this is just a lookup
 			if ( data ) {
 				if ( !queue || jQuery.isArray( data ) ) {
+                    /*
+                    一般情况下，第一次取不到队列属性（即 !queue 为 true）,会初始化一个队列 queue
+                    
+                    可是，为什么 data 是数组也走这里初始化队列呢？
+
+                    $.queue(document, 'q1', aaa);
+                    $.queue(document, 'q1', [bbb]);
+
+                    console.log($.queue(document, 'q1'))
+                    // [bbb()]
+
+                    这说明，如果第三个参数是数组时，不管队列在前面存了什么，都重新初始化
+                     */
 					queue = data_priv.access( elem, type, jQuery.makeArray(data) );
 				} else {
 					queue.push( data );
+                    /*
+                    queue 为什么是数组呢？
+
+                    access 方法的最后一句是：
+                    return value !== undefined ? value : key;
+
+                    我们看到，这个 access 方法最后返回的就是 value，即这里的你 jQuery.makeArray(data)，当然是数组了
+                     */
 				}
 			}
+            // 如果是写 2 个参数，就没有上面的 push 等操作了，直接返回 queue
 			return queue || [];
 		}
 	},
-
+    // 出队，相当于数组的 shift 方法
 	dequeue: function( elem, type ) {
 		type = type || "fx";
 
@@ -6355,6 +6448,10 @@ jQuery.fn.extend({
 		return defer.promise( obj );
 	}
 });
+
+
+
+
 var nodeHook, boolHook,
 	rclass = /[\t\r\n\f]/g,
 	rreturn = /\r/g,
