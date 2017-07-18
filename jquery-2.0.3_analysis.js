@@ -6294,6 +6294,7 @@ jQuery.extend({
 		var queue;
 
 		if ( elem ) {
+            // 默认的队列名称是 fx
 			type = ( type || "fx" ) + "queue";
 			queue = data_priv.get( elem, type );
 
@@ -6331,14 +6332,19 @@ jQuery.extend({
 		}
 	},
     // 出队，相当于数组的 shift 方法
+    // 上边的例子中，我们出队时都是调用 dequeue 方法，每次需要出队，就主动调用一次 dequeue
+    // 也就是说，上边出队多少次，我们就调用了多少次 dequeue 方法
+    // 如果我们想要调用一次 dequeue，然后执行多次出队操作，就得靠下面的 next 方法
+    // 也就是说，第一个方法调用时，主动调用一次 next 方法，就可以触发下一次出队了
+    // 如果每个方法调用时，都主动触发 next 方法，那就把整个队列串起来了，整个队列执行一次 dequeue 就可以出队所有
 	dequeue: function( elem, type ) {
 		type = type || "fx";
 
 		var queue = jQuery.queue( elem, type ),
             // queue 只有 2 个参数，返回队列 queue
 			startLength = queue.length,
-			fn = queue.shift(),
             // 队头的函数
+			fn = queue.shift(),
 			hooks = jQuery._queueHooks( elem, type ),
 			next = function() {
 				jQuery.dequeue( elem, type );
@@ -6355,6 +6361,7 @@ jQuery.extend({
 			// Add a progress sentinel to prevent the fx queue from being
 			// automatically dequeued
 			if ( type === "fx" ) {
+                // 如果是队列名是 fx,把 inprogress 加入到队头
 				queue.unshift( "inprogress" );
 			}
 
@@ -6389,6 +6396,7 @@ jQuery.extend({
 	},
 
 	// not intended for public consumption - generates a queueHooks object, or returns the current one
+    // 出队结束后，清除队列缓存数据
 	_queueHooks: function( elem, type ) {
 		var key = type + "queueHooks";
 		return data_priv.get( elem, key ) || data_priv.access( elem, key, {
@@ -6420,16 +6428,34 @@ jQuery.fn.extend({
 		}
 
 		if ( arguments.length < setter ) {
+            // 获取的时候，jQuery 的通常做法是获取第一项对应的值
 			return jQuery.queue( this[0], type );
 		}
 
 		return data === undefined ?
 			this :
+            // 获取的时候，jQuery 的通常做法是队每一项分别进行设置
 			this.each(function() {
 				var queue = jQuery.queue( this, type, data );
 
 				// ensure a hooks for this queue
 				jQuery._queueHooks( this, type );
+
+                /*
+                
+                $(this).animate({width:300},2000);
+                $(this).animate({height:300},2000);
+                $(this).animate({left:300},2000);
+
+                这里的动画会依次执行，其实就是一个队列 fx
+
+                为什么这里添加动画后就可以立即执行动画呢？
+                其实，就是【入队】后马上进行【出队】
+
+                也就是下面的，队列名为 fx，并且队头元素不是 inprogress，就出队
+
+                然后每个 animate 方法触发 next 方法，就可以使得所有动画连续起来
+                 */
 
 				if ( type === "fx" && queue[0] !== "inprogress" ) {
 					jQuery.dequeue( this, type );
@@ -6443,22 +6469,61 @@ jQuery.fn.extend({
 	},
 	// Based off of the plugin by Clint Helfers, with permission.
 	// http://blindsignals.com/index.php/2009/07/jquery-delay/
+    /*
+    ① 例1：
+    $('#div1').click(function(){
+        $(this).animate({width:300},2000).animate({left:300},2000);
+    });
+
+    点击 ID 为 div1 的元素后，其宽度先花 2 秒变成 300px，随后花 2 秒向右移动 300px
+
+    ② 例2：
+    $('#div1').click(function(){
+        $(this).animate({width:300},2000).delay(2000).animate({left:300},2000);
+    });
+
+    点击 ID 为 div1 的元素后，其宽度先花 2 秒变成 300px，停顿 2 秒，然后再花 2 秒向右移动 300px
+
+
+    jQuery.fx.speeds = {
+        slow : 600,
+        fast : 200,
+        _default : 400
+    };
+
+    delay(slow) 是指把 fx 队列延迟 600 毫秒
+     */
 	delay: function( time, type ) {
 		time = jQuery.fx ? jQuery.fx.speeds[ time ] || time : time;
 		type = type || "fx";
 
+        // 返回之前，入队一个方法，时间 time 后出队下一个方法
 		return this.queue( type, function( next, hooks ) {
 			var timeout = setTimeout( next, time );
 			hooks.stop = function() {
 				clearTimeout( timeout );
 			};
+            // 后面的 animate 方法中会调用 hooks.stop 方法
 		});
 	},
+    // 清空队列，即把队列变成空数组
 	clearQueue: function( type ) {
 		return this.queue( type || "fx", [] );
 	},
 	// Get a promise resolved when queues of a certain type
 	// are emptied (fx is the type by default)
+    /*
+    ① 例1：
+    $('#div1').click(function(){
+        $(this).animate({width:300},2000).animate({left:300},2000);
+        $(this).promise().done(function(){
+            alert(123);
+        });
+    });
+
+    点击 ID 为 div1 的元素后，其宽度先花 2 秒变成 300px，随后花 2 秒向右移动 300px;
+    最后，弹出 123
+     */ 
 	promise: function( type, obj ) {
 		var tmp,
 			count = 1,
@@ -6478,6 +6543,17 @@ jQuery.fn.extend({
 		type = type || "fx";
 
 		while( i-- ) {
+            /*
+            tmp = {
+                empty: jQuery.Callbacks("once memory").add(function() {
+                    data_priv.remove( elem, [ type + "queue", key ] );
+                })
+            }
+
+            前边写 dequeue 方法最后会执行 hooks.empty.fire();
+            也就是每次出队会调用这里的 resolve 方法
+            等到 count 减到 0 时就会调用 defer.resolveWith( elements, [ elements ] )
+             */
 			tmp = data_priv.get( elements[ i ], type + "queueHooks" );
 			if ( tmp && tmp.empty ) {
 				count++;
