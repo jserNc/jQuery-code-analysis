@@ -1171,8 +1171,33 @@ jQuery.extend({
             // 数组、类数组用 for 循环
 			if ( isArray ) {
 				for ( ; i < length; i++ ) {
-                    // callback 里的 this 指向 obj[ i ]，参数固定 为 args
+                    // callback 里的 this 指向 obj[ i ]，参数固定为 args
 					value = callback.apply( obj[ i ], args );
+                    /*
+                    举个例子：
+                    var bd = $('body');
+                    
+                    console.log(bd) 
+                    // [body, prevObject: init(1), context: document, selector: "body"]
+
+                    console.log(bd.length)
+                    // 1
+
+                    所以，这里的 value = callback.apply( obj[ i ], args )
+                    其实就是 value = callback.apply( body, args )
+
+                    如果选取多个元素，比如 $('p') 就是这种：
+                    var ps = $('p');
+
+                    console.log(ps) 
+                    // [p, p, prevObject: init(1), context: document, selector: "p"]
+                    
+                    console.log(ps.length)
+                    // 2
+                    
+                    那就对每个 p 元素执行 callback 方法
+
+                    */
 
 					if ( value === false ) {
 						break;
@@ -1537,12 +1562,23 @@ jQuery.extend({
     
     // elems 指 $('#div1')，fn 指 css 等方法，key 指 'background' 等，value 指 'green'
 	// chainable 控制 set 还是 get
+    /*
+    attr: function( name, value ) {
+        // 下文会定义 jQuery.attr 方法
+		return jQuery.access( this, jQuery.attr, name, value, arguments.length > 1 );
+         
+        emptyGet, raw 这些没传的参数都是 undefined
+	}
+    */
     access: function( elems, fn, key, value, chainable, emptyGet, raw ) {
 		var i = 0,
 			length = elems.length,
-            // key 为 undefined 或 null ,bulk 为 true;
-            // 其他情况，bulk 为 false;
 			bulk = key == null;
+            /*
+             key 为 undefined 或 null ,bulk 为 true;
+             其他情况，bulk 为 false;
+            */
+            
 
 		// Sets many values
         // $('#div1').css({'background':'green',width:'300px'}) 这种
@@ -1586,6 +1622,10 @@ jQuery.extend({
             // 有 key 值，一般情况下直接到这里
 			if ( fn ) {
 				for ( ; i < length; i++ ) {
+                    /*
+                    fn 的一个例子：
+                    jQuery.attr: function( elem, name, value ) {}
+                    */
 					fn( elems[i], key, raw ? value : value.call( elems[i], i, fn( elems[i], key ) ) );
 				}
 			}
@@ -1601,7 +1641,7 @@ jQuery.extend({
 			// Gets
 			bulk ?
 				fn.call( elems ) :
-				length ? fn( elems[0], key ) : emptyGet;
+				length ?    ( elems[0], key ) : emptyGet;
 	},
 
     // 当前时间
@@ -6565,16 +6605,58 @@ jQuery.fn.extend({
 	}
 });
 
+/*
+① attr()   获取匹配的元素集合中的第一个元素的属性的值 或 设置每一个匹配元素的一个或多个属性。
+② prop() 获取匹配的元素集中第一个元素的属性（property）值 或 设置每一个匹配元素的一个或多个属性。
+③ removeAttr() 为匹配的元素集合中的每个元素中移除一个属性（attribute）。
+④ removeProp() 为集合中匹配的元素删除一个属性（property）。
+⑤ val() 获取匹配的元素集合中第一个元素的当前值 或 设置匹配的元素集合中每个元素的值
 
+那么 attribute 和 property 有什么区别呢？
 
+例：
+<input id="cbox" type="checkbox" checked="checked" />
 
+$('input').attr('checked')   // checked
+$('input').prop('checked')   // true
+
+attr() 方法读取直接写在标签上的属性（attribute），可以通过 setAttribute、getAttribute 进行设置、读取
+prop() 方法是通过 . 号来进行设置、读取的属性（property）
+
+换个角度看：
+var cbox = document.getElementById('cbox');
+
+① 对应 attr 方法
+cbox.getAttribute('checked')  // checked
+
+② 对应 prop 方法
+cbox['checked'] // true
+cbox.checked    // true
+
+总的来说：
+基本可以总结为attribute节点都是在HTML代码中可见的，
+而property只是一个普通的名值对属性
+*/
 var nodeHook, boolHook,
+    /*
+    \t 水平制表（跳到下一个 Tab 位置）
+    \r 回车，将当前位置移到本行开头
+    \n 换行，将当前位置移到下一行开头
+    \f 换页，将当前位置移到下页开头
+    */
 	rclass = /[\t\r\n\f]/g,
 	rreturn = /\r/g,
 	rfocusable = /^(?:input|select|textarea|button)$/i;
 
 jQuery.fn.extend({
 	attr: function( name, value ) {
+        /*
+        ① jQuery.access: function( elems, fn, key, value, chainable, emptyGet, raw ) {}
+        
+        emptyGet, raw 这些没传的参数都是 undefined
+
+        ② 下文会定义 jQuery.attr 方法
+        */
 		return jQuery.access( this, jQuery.attr, name, value, arguments.length > 1 );
 	},
 
@@ -6590,42 +6672,132 @@ jQuery.fn.extend({
 
 	removeProp: function( name ) {
 		return this.each(function() {
+            // prop 是对象的属性，可以直接通过 [] 或 . 运算符取到
 			delete this[ jQuery.propFix[ name ] || name ];
 		});
 	},
 
+    /*
+    ① 参数为一个 class 名
+    $( "p" ).last().addClass( "selected" );
+    最后一个 p 标签加一个名为 selected 的 class
+
+    ② 参数为多个 class 名
+    $( "p:last" ).addClass( "selected highlight" );
+    最后一个 p 标签加上 selected、highlight 等两个 class
+
+    ③ 参数为函数 function
+    $( "div" ).addClass(function( index, currentClass ) {
+      var addedClass;
+     
+      if ( currentClass === "red" ) {
+        addedClass = "green";
+        $( "p" ).text( "There is one green div" );
+      }
+     
+      return addedClass;
+    });
+    如果某个 div 有名为 red 的 class，那就给它再加一个名为 green 的 class  
+    */
 	addClass: function( value ) {
 		var classes, elem, cur, clazz, j,
 			i = 0,
 			len = this.length,
 			proceed = typeof value === "string" && value;
-
+            /*
+            如果参数 value 是字符串，那么 proceed 就是这个字符串
+            如果参数 value 不是字符串，那么 proceed 就是 false
+            */
+    
+        // 参数 value 是函数
 		if ( jQuery.isFunction( value ) ) {
 			return this.each(function( j ) {
 				jQuery( this ).addClass( value.call( this, j, this.className ) );
 			});
-		}
+        }
+        /*
+        ① 这里的 this.each 中的 this 指的是当前 jQuery 实例对象；
+        可是，jQuery( this ) 中的这个 this 又是指什么呢？
 
+        那就先从 each 方法看起，这里的 each 是 jQuery 实例方法：
+        each: function( callback, args ) {
+            return jQuery.each( this, callback, args );
+        }
+        
+        它会调用 jQuery 的静态方法 jQuery.each( this, callback, args );
+        
+        静态方法 jQuery.each，
+        jQuery.each: function( obj, callback, args ){}
+        第二个参数 callback 内部的 this 会绑定为第一个参数的属性 obj[i]（一般情况下是 obj[0]，是个原生 dom 元素）
+        callback.apply( obj[ i ], args )
+
+        所以不能写成：
+        this.addClass( value.call( this, j, this.className ) );
+
+        因为这里的 this 是原生 dom 元素
+
+        ② value.call( this, j, this.className ) 中的 this.className 是指节点当前的 class
+
+        ③ 那这里的 j 又是指什么？
+        看这里： callback.apply( obj[ i ], args )，实参为 args，即 this.each 的第二个实参 undefined
+        所以，运行时，j 就是 undefined
+        */
+		
+        // 参数 value 是字符串
 		if ( proceed ) {
 			// The disjunction here is for better compressibility (see removeClass)
+            /*
+            匹配任意不是空白的字符：
+            core_rnotwhite = /\S+/g
+            
+            eg:
+            "selected highlight".match(/\S+/g)
+            // ["selected", "highlight"]
+            */
 			classes = ( value || "" ).match( core_rnotwhite ) || [];
 
 			for ( ; i < len; i++ ) {
 				elem = this[ i ];
+                /*
+                \t 水平制表（跳到下一个 Tab 位置）
+                \r 回车，将当前位置移到本行开头
+                \n 换行，将当前位置移到下一行开头
+                \f 换页，将当前位置移到下页开头
+
+                rclass = /[\t\r\n\f]/g
+
+                把节点原来的 class 名前后加上空格，方便添加新的 class 
+                ( " " + 'cls' + " " ).replace( /[\t\r\n\f]/g, " " )
+                // " cls "
+
+                另外，如果原来就没有 class 
+                ( " " + '' + " " ).replace( /[\t\r\n\f]/g, " " )
+                // "  "
+                */
 				cur = elem.nodeType === 1 && ( elem.className ?
 					( " " + elem.className + " " ).replace( rclass, " " ) :
 					" "
 				);
 
+                /*
+                原来没有 class 这里 cur 会为 true 吗？会！！
+                !! "  "
+                // true
+
+                所以说，elem.nodeType === 1 并且参数 value 是字符串就会走这里
+                */
 				if ( cur ) {
 					j = 0;
+                    // 遍历 classes 数组：["selected", "highlight"]
 					while ( (clazz = classes[j++]) ) {
+                        // < 0 就是原来没这个 class，那就把它加进来
+                        // 前后有空格，很好的避免了新的 class 是原 class 字符串的子串的情况
 						if ( cur.indexOf( " " + clazz + " " ) < 0 ) {
 							cur += clazz + " ";
 						}
 					}
+                    // 最后，去掉前后空格
 					elem.className = jQuery.trim( cur );
-
 				}
 			}
 		}
