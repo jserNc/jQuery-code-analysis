@@ -6633,9 +6633,45 @@ cbox.getAttribute('checked')  // checked
 cbox['checked'] // true
 cbox.checked    // true
 
+③ 获取 id
+$('input').attr('id')   // cbox
+$('input').prop('id')   // cbox
+
+cbox.getAttribute('id') // cbox
+cbox.id                 // cbox
+cbox['id']              // cbox
+
+id 这种常见属性，两种方法返回值一样
+
+④ 设置自定义属性
+
+$('input').attr('miaov','妙味')
+input 会变为：
+<input id="cbox" miaov="妙味" type="checkbox" checked="checked" />
+
+$('input').prop('miaov','妙味')
+input 还是：
+<input id="cbox" type="checkbox" checked="checked" /> 没显示出来 miaov 属性
+
+这两种方法是有区别的，如果换成 id 等常见属性两者是一样的。
+
+⑤ 获取自定义属性
+假如有 input 标签如下：
+<input id="cbox" miaov="妙味" type="checkbox" checked="checked" />
+
+$('input').attr('miaov')   // 妙味
+$('input').prop('miaov'）  // （获取不到值，大多数浏览器都返回空）
+
+⑥ 删除属性
+<input id="cbox" miaov="妙味" type="checkbox" checked="checked" />
+
+$('input').removeAttr('id')   可以删除 id 属性
+$('input').removeProp('id')   删除不了 id 属性
+
+
 总的来说：
-基本可以总结为attribute节点都是在HTML代码中可见的，
-而property只是一个普通的名值对属性
+基本可以总结为 attribute 节点都是在 HTML 代码中可见的，
+而 property 只是一个普通的名值对属性
 */
 var nodeHook, boolHook,
     /*
@@ -6652,6 +6688,13 @@ jQuery.fn.extend({
 	attr: function( name, value ) {
         /*
         ① jQuery.access: function( elems, fn, key, value, chainable, emptyGet, raw ) {}
+
+        其中：
+        elems 是操作的对象
+        fn 调用的方法
+        key 设置/获取的属性名
+        value 设置的属性值
+        chainable 为 true 表示设置操作，false 表示获取操作
         
         emptyGet, raw 这些没传的参数都是 undefined
 
@@ -6962,6 +7005,105 @@ jQuery.fn.extend({
 	}
 });
 
+/*
+举例说明一下钩子机制：
+
+① 不用钩子机制，要写很多 if-else
+
+// 考生分数以及父亲名
+function examinee(name, score, fatherName) {
+    return {
+        name: name,
+        score: score,
+        fatherName: fatherName
+    };
+}
+  
+// 审阅考生们
+function judge(examinees) {
+    var result = {};
+    for (var i in examinees) {
+        var curExaminee = examinees[i];
+        var ret = curExaminee.score;
+        // 判断是否有后门关系
+        if (curExaminee.fatherName === 'xijingping') {
+            ret += 1000;
+        } else if (curExaminee.fatherName === 'ligang') {
+            ret += 100;
+        } else if (curExaminee.fatherName === 'pengdehuai') {
+            ret += 50;
+        }
+        result[curExaminee.name] = ret;
+    }
+    return result;
+}
+  
+  
+var lihao = examinee("lihao", 10, 'ligang');
+var xida = examinee('xida', 8, 'xijinping');
+var peng = examinee('peng', 60, 'pengdehuai');
+var liaoxiaofeng = examinee('liaoxiaofeng', 100, 'liaodaniu');
+  
+var result = judge([lihao, xida, peng, liaoxiaofeng]);
+  
+// 根据分数选取前三名
+for (var name in result) {
+    console.log("name:" + name);
+    console.log("score:" + score);
+}
+
+② 运用钩子
+
+// relationHook 是个钩子函数，用于得到关系得分
+var relationHook = {
+    "xijinping": 1000,   
+    "ligang": 100,
+    "pengdehuai": 50,
+　　 // 新的考生只需要在钩子里添加关系分
+}
+ 
+// 考生分数以及父亲名
+function examinee(name, score, fatherName) {
+    return {
+        name: name,
+        score: score,
+        fatherName: fatherName
+    };
+}
+  
+// 审阅考生们
+function judge(examinees) {
+    var result = {};
+    for (var i in examinees) {
+        var curExaminee = examinees[i];
+        var ret = curExaminee.score;
+        if (relationHook[curExaminee.fatherName] ) {
+            ret += relationHook[curExaminee.fatherName] ;
+        }
+        result[curExaminee.name] = ret;
+    }
+    return result;
+}
+  
+  
+var lihao = examinee("lihao", 10, 'ligang');
+var xida = examinee('xida', 8, 'xijinping');
+var peng = examinee('peng', 60, 'pengdehuai');
+var liaoxiaofeng = examinee('liaoxiaofeng', 100, 'liaodaniu');
+  
+var result = judge([lihao, xida, peng, liaoxiaofeng]);
+  
+// 根据分数选取前三名
+for (var name in result) {
+    console.log("name:" + name);
+    console.log("score:" + score);
+}
+
+使用钩子去处理特殊情况，可以让代码的逻辑更加清晰，省去大量的条件判断，
+上面的钩子机制的实现方式，采用的就是表驱动方式，
+就是我们事先预定好一张表（俗称打表），用这张表去适配特殊情况。
+ */
+
 jQuery.extend({
 	valHooks: {
 		option: {
@@ -7037,40 +7179,107 @@ jQuery.extend({
 			nType = elem.nodeType;
 
 		// don't get/set attributes on text, comment and attribute nodes
+        // 节点不存在，或者节点类型是【文本】、【注释】、【属性】，那就返回，其实相当于返回 undefined
 		if ( !elem || nType === 3 || nType === 8 || nType === 2 ) {
 			return;
 		}
 
 		// Fallback to prop when attributes are not supported
+        /*
+        typeof elem.getAttribute === "undefined"
+        如果节点不支持 getAttribute 方法，那就用 jQuery.prop 方法
+
+        举个例子：
+        $(document).attr('title','hello');
+        这样是没用的，document 没有 getAttribute、setAttribute 等方法
+
+        document.getAttribute // undefined
+        document.setAttribute // undefined
+         */
 		if ( typeof elem.getAttribute === core_strundefined ) {
 			return jQuery.prop( elem, name, value );
 		}
 
 		// All attributes are lowercase
 		// Grab necessary hook if one is defined
+        /*
+        说一说 jQuery 中的 hooks 机制：
+
+        先用 support 进行功能检测，然后定义一系列 hooks 方法进行兼容性修复，比如这里的 attrHooks 就是其中一种
+        一般 attrHooks 这类方法会有多个属性，代表那几个属性有兼容性问题，这个属性如果有 get 子属性说明有获取兼容性问题
+        这个属性如果有 set 子属性说明有设置兼容性问题。attrHooks 中没有的属性说明是正常的，那就不用管了。
+
+        attrHooks: {
+            type: {
+                set: function( elem, value ) {}
+            }
+        }
+
+        这里只有 type 属性和 set 子属性，说明 type 属性的设置（set）需要兼容
+
+         */ 
+        // 获取钩子方法，解决真的某种属性的【设置/获取】兼容问题
 		if ( nType !== 1 || !jQuery.isXMLDoc( elem ) ) {
 			name = name.toLowerCase();
 			hooks = jQuery.attrHooks[ name ] ||
 				( jQuery.expr.match.bool.test( name ) ? boolHook : nodeHook );
+                // nodeHook 是 undefined
 		}
+        /*
+        booleans = "checked|selected|async|autofocus|autoplay|controls|defer|disabled|hidden|ismap|loop|multiple|open|readonly|required|scoped";
+        jQuery.expr.match.bool : new RegExp( "^(?:" + booleans + ")$", "i" );
+        相当于：
+        jQuery.expr.match.bool : /^(?:checked|selected|async|autofocus|autoplay|controls|defer|disabled|hidden|ismap|loop|multiple|open|readonly|required|scoped)$/i
+         
+        boolHook = {
+            set: function( elem, value, name ) {
+                if ( value === false ) {
+                    // Remove boolean attributes when set to false
+                    jQuery.removeAttr( elem, name );
+                } else {
+                    elem.setAttribute( name, name );
+                }
+                return name;
+            }
+        };
 
+        看例子：
+        对于 <input type="checkbox" checked="checked">
+        $('input').attr('checked') // checked
+        $('input').prop('checked') // true
+
+        $('input').attr('checked','checked') 这种写法当然是好的，
+        但是 $('input').attr('checked',true) 会怎样呢？
+
+        以上的 boolHook 是兼容这种写法的：
+        $('input').attr('checked',true) 
+        -> elem.setAttribute( name, name ) 
+        -> input.setAttribute( 'checked', 'checked' )
+        
+         */
+
+        // 有第三个参数，进行设置操作
 		if ( value !== undefined ) {
 
+            // 参数为 null，会删掉这个属性
 			if ( value === null ) {
 				jQuery.removeAttr( elem, name );
 
+            // hooks 解决 set 有兼容性问题的属性，如 type 属性有 set 兼容问题
 			} else if ( hooks && "set" in hooks && (ret = hooks.set( elem, value, name )) !== undefined ) {
 				return ret;
-
+            // 没有兼容问题，就调用 setAttribute 就好了，这里还把待设置的值强制转换成字符串
 			} else {
 				elem.setAttribute( name, value + "" );
 				return value;
 			}
-
+        // 没有第三个参数，进行读取操作，先看有没有需要有兼容问题
 		} else if ( hooks && "get" in hooks && (ret = hooks.get( elem, name )) !== null ) {
 			return ret;
-
+        // 没有兼容问题
 		} else {
+            // jQuery.find = Sizzle
+            // Sizzle.attr() 已经实现了获取属性这个方法，这里直接用
 			ret = jQuery.find.attr( elem, name );
 
 			// Non-existent attributes return null, we normalize to undefined
@@ -7100,14 +7309,33 @@ jQuery.extend({
 		}
 	},
 
+    /*
+    说明 type 属性的 set 有兼容问题
+    之前 support 里有检测到的问题 support.radioValue
+
+    // Check if an input maintains its value after becoming a radio
+    // Support: IE9, IE10
+    // input 变成 radio 后是否保持原来的 value
+    input = document.createElement("input");
+    input.value = "t";
+    input.type = "radio";
+    support.radioValue = input.value === "t";
+
+     */
 	attrHooks: {
 		type: {
 			set: function( elem, value ) {
+                // 有 support.radioValue 兼容性问题，并且要设置 input 元素的 type 为 radio
 				if ( !jQuery.support.radioValue && value === "radio" && jQuery.nodeName(elem, "input") ) {
 					// Setting the type on a radio button after the value resets the value in IE6-9
 					// Reset value to default in case type is set after value during creation
-					var val = elem.value;
+					
+                    // 先存下原来的 input.value 值
+                    var val = elem.value;
+                    // 设置 input.type = "radio";
 					elem.setAttribute( "type", value );
+
+                    // 如果原来是有 input.value 值，重新赋值回去，以免上边的操作修改了 value 属性值
 					if ( val ) {
 						elem.value = val;
 					}
