@@ -6748,11 +6748,12 @@ jQuery.fn.extend({
 			len = this.length,
 			proceed = typeof value === "string" && value;
             /*
-            如果参数 value 是字符串，那么 proceed 就是这个字符串
-            如果参数 value 不是字符串，那么 proceed 就是 false
+            ① 如果参数 value 是字符串，那么 proceed 就是这个字符串
+            ② 如果参数 value 不是字符串，那么 proceed 就是 false
             */
     
         // 参数 value 是函数
+        // value.call( this, j, this.className ) 会返回一个 class 名或者 undefined
 		if ( jQuery.isFunction( value ) ) {
 			return this.each(function( j ) {
 				jQuery( this ).addClass( value.call( this, j, this.className ) );
@@ -6829,6 +6830,7 @@ jQuery.fn.extend({
 
                 所以说，elem.nodeType === 1 并且参数 value 是字符串就会走这里
                 */
+                // 这里要求 cur 为真，其实是要求 elem.nodeType === 1，元素类型为标签节点
 				if ( cur ) {
 					j = 0;
                     // 遍历 classes 数组：["selected", "highlight"]
@@ -6848,36 +6850,93 @@ jQuery.fn.extend({
 		return this;
 	},
 
+    /*
+    ① 参数为一个 class 名
+    $( "p:even" ).removeClass( "blue" );
+    索引为偶数（0,2,4...）的 p 标签删除名为 blue 的 class
+
+    ② 参数为多个 class 名
+    $( "p:odd" ).removeClass( "blue under" );
+    索引为奇数（1,3,5...）的 p 标签删除名为 blue 和 under 的 class
+
+    ③ 参数为空
+    $( "p:eq(1)" ).removeClass();
+    删去第 2 个 p 标签的所有 class
+
+    ④ 参数为函数
+    $( "li:last" ).removeClass(function() {
+      return $( this ).prev().attr( "class" );
+    });
+    删除函数参数返回的 class
+    */
 	removeClass: function( value ) {
 		var classes, elem, cur, clazz, j,
 			i = 0,
 			len = this.length,
 			proceed = arguments.length === 0 || typeof value === "string" && value;
+            /*
+            ① 如果不传参数，那么 proceed 就是 true，后面就会删除所有的 class
+            ② 如果参数 value 不是空字符串，那么那么 proceed 就是 true，后面会删除对应的 class
+               （这里有个另类：如果 value 是 ' '，typeof ' ' === "string" && ' ' -> ' '，
+                后面的 ( value || "" ).match( core_rnotwhite ) 会过滤掉的）
+            ③ 如果有参数，并且参数 value 不是字符串，那么 proceed 就是 false
+            */
 
+        // 参数为函数
+        // value.call( this, j, this.className ) 会返回一个 class 名或者 undefined
 		if ( jQuery.isFunction( value ) ) {
 			return this.each(function( j ) {
 				jQuery( this ).removeClass( value.call( this, j, this.className ) );
 			});
 		}
+
+        // proceed 为真，说明
 		if ( proceed ) {
+            /*
+            匹配任意不是空白的字符：
+            core_rnotwhite = /\S+/g
+            
+            eg:
+            "selected highlight".match(/\S+/g)
+            // ["selected", "highlight"]
+            */
 			classes = ( value || "" ).match( core_rnotwhite ) || [];
 
 			for ( ; i < len; i++ ) {
 				elem = this[ i ];
 				// This expression is here for better compressibility (see addClass)
+                /*
+                \t 水平制表（跳到下一个 Tab 位置）
+                \r 回车，将当前位置移到本行开头
+                \n 换行，将当前位置移到下一行开头
+                \f 换页，将当前位置移到下页开头
+
+                rclass = /[\t\r\n\f]/g
+
+                把节点原来的 class 名前后加上空格，方便添加新的 class 
+                ( " " + 'cls' + " " ).replace( /[\t\r\n\f]/g, " " )
+                // " cls "
+
+                另外，如果原来就没有 class 
+                ( " " + '' + " " ).replace( /[\t\r\n\f]/g, " " )
+                // "  "
+                */
 				cur = elem.nodeType === 1 && ( elem.className ?
 					( " " + elem.className + " " ).replace( rclass, " " ) :
 					""
 				);
-
+                
+                // 如果 cur 不为真，说明 elem.nodeType !== 1 或者说原来就没有 class，那就没必要继续了
 				if ( cur ) {
 					j = 0;
 					while ( (clazz = classes[j++]) ) {
 						// Remove *all* instances
+                        // class 存在，则删除之
 						while ( cur.indexOf( " " + clazz + " " ) >= 0 ) {
 							cur = cur.replace( " " + clazz + " ", " " );
 						}
 					}
+                    // 如果不传参数 value，也就是 undefined，那就清空 class 
 					elem.className = value ? jQuery.trim( cur ) : "";
 				}
 			}
@@ -6886,13 +6945,33 @@ jQuery.fn.extend({
 		return this;
 	},
 
+    /*
+    ① 参数为字符串，添加/删除指定 class
+    .toggleClass( className )
+    className 指 1 个或多个被空格分隔的 class 名
+
+    ② 第一个参数为字符串，第二个参数为布尔值
+    .toggleClass( className, state )
+    state 决定是添加还是删除 class
+
+    ③ 第一个参数为函数，第二个参数布尔值可选
+    .toggleClass( function [, state ] )
+    function 的输入：(元素索引,旧的 class 值,参数状态)
+    function 的输出：class 名
+    */
 	toggleClass: function( value, stateVal ) {
 		var type = typeof value;
 
+        // 如果第一个参数是字符串，并且第二个参数是布尔值
 		if ( typeof stateVal === "boolean" && type === "string" ) {
+            // 第二个参数为 stateVal 为 true 添加 class；stateVal 为 false 删除 class
 			return stateVal ? this.addClass( value ) : this.removeClass( value );
 		}
 
+        /*
+        如果第一个参数是函数，递归调用
+        value.call(this, i, this.className, stateVal) 会返回一个 class 值
+        */
 		if ( jQuery.isFunction( value ) ) {
 			return this.each(function( i ) {
 				jQuery( this ).toggleClass( value.call(this, i, this.className, stateVal), stateVal );
@@ -6900,15 +6979,22 @@ jQuery.fn.extend({
 		}
 
 		return this.each(function() {
+            // 第一个参数为字符串，第二个参数不是布尔值，或者根本没有第二个参数
 			if ( type === "string" ) {
 				// toggle individual class names
 				var className,
 					i = 0,
 					self = jQuery( this ),
 					classNames = value.match( core_rnotwhite ) || [];
+                /*
+                    "selected highlight".match(/\S+/g)
+                    // ["selected", "highlight"]
+                */
 
 				while ( (className = classNames[ i++ ]) ) {
 					// check each className given, space separated list
+                    // 遍历 ["selected", "highlight"] 数组
+                    // 有这个 class 就删除之；没有这个 class 就加上
 					if ( self.hasClass( className ) ) {
 						self.removeClass( className );
 					} else {
@@ -6917,7 +7003,9 @@ jQuery.fn.extend({
 				}
 
 			// Toggle whole class name
+            // 参数为【空】，或【undefined】或【布尔值】
 			} else if ( type === core_strundefined || type === "boolean" ) {
+                // 把原来的 class 存起来
 				if ( this.className ) {
 					// store className if set
 					data_priv.set( this, "__className__", this.className );
@@ -6927,16 +7015,49 @@ jQuery.fn.extend({
 				// then remove the whole classname (if there was one, the above saved it).
 				// Otherwise bring back whatever was previously saved (if anything),
 				// falling back to the empty string if nothing was stored.
+                /*
+                    ① 原来有 class 或者值为 false，清空 class
+                    ② 否则就恢复原来的 class（把原来存的取出来）
+                    ③ 如果本身就没有 class，那就没有存 class 这个操作，那从缓存也取不出来，就返回 ""）
+                */
 				this.className = this.className || value === false ? "" : data_priv.get( this, "__className__" ) || "";
 			}
 		});
 	},
 
+    // 判断是否含有名为 selector 的 class
+    // 如果调用对象是一组元素，只要有一个元素包含这个 class 就返回 true
+    /*
+    为什么这里是 【如果调用对象是一组元素，只要有一个元素包含这个 class 就返回 true】？
+    看一下 togglClass 片段就懂了：
+    if ( self.hasClass( className ) ) {
+        self.removeClass( className );
+    } else {
+        self.addClass( className );
+    }
+    如果 self 是一组元素，只要这一组元素里有一个元素包含 className 这个 class，
+    那就对 self 这一组元素，都删去 className 这个 class
+
+    所以，这么定义 hasClass 函数是有道理的
+    */
 	hasClass: function( selector ) {
+        // selector 前后加空格是为了避免 selector 是原来 className 子串的情况
 		var className = " " + selector + " ",
 			i = 0,
 			l = this.length;
 		for ( ; i < l; i++ ) {
+            /*
+                rclass = /[\t\r\n\f]/g
+
+                把节点原来的 class 名前后加上空格，方便添加新的 class 
+                ( " " + 'cls' + " " ).replace( /[\t\r\n\f]/g, " " )
+                // " cls "
+
+                另外，如果原来就没有 class 
+                ( " " + '' + " " ).replace( /[\t\r\n\f]/g, " " )
+                // "  "
+            */
+            // 遍历一组元素，只要有一个元素找到了，就返回 true
 			if ( this[i].nodeType === 1 && (" " + this[i].className + " ").replace(rclass, " ").indexOf( className ) >= 0 ) {
 				return true;
 			}
@@ -6945,24 +7066,68 @@ jQuery.fn.extend({
 		return false;
 	},
 
+    /*
+    ① 参数为空
+    获取选择器匹配到的第一个元素的 value 值
+    
+    ② 一个参数（字符串 | 数字 | 数组）
+    为选择器匹配到的每一个元素设置 value 值
+    
+    ③ 一个参数（函数）
+    输入：（元素索引值，旧的 value）
+    输出：待设置的新的 value
+    */
 	val: function( value ) {
 		var hooks, ret, isFunction,
 			elem = this[0];
 
+        // 参数为空，获取 value
 		if ( !arguments.length ) {
 			if ( elem ) {
+                /*
+                valHooks: {
+                    option: {
+                        get: function( elem ) {}
+                    },
+                    select: {
+                        get: function( elem ) {},
+                        set: function( elem, value ) {}
+                    }
+                }
+
+                ① elem.type
+                一般元素的 type 是 undefined，如 
+                $('div')[0].type    // undefined
+                也有元素有 type 属性：
+                $('button')[0].type // button
+                
+                ② elem.nodeName.toLowerCase()
+                <select id="multiple" multiple="multiple">
+                    <option selected="selected">Multiple</option>
+                    <option>Multiple2</option>
+                    <option selected="selected">Multiple3</option>
+                </select>
+                
+                这里的 select、option 标签就需要钩子做兼容
+                */
 				hooks = jQuery.valHooks[ elem.type ] || jQuery.valHooks[ elem.nodeName.toLowerCase() ];
 
+                // 部分需要兼容 select、option 的元素在这里取完就返回了
 				if ( hooks && "get" in hooks && (ret = hooks.get( elem, "value" )) !== undefined ) {
 					return ret;
 				}
 
 				ret = elem.value;
-
+                
+                /*
+                rreturn = /\r/g;
+                */
 				return typeof ret === "string" ?
 					// handle most common string cases
+                    // 去掉字符串中的回车，然后返回字符串
 					ret.replace(rreturn, "") :
 					// handle cases where value is null/undef or number
+                    // null | undefined 返回 ""，数字等其他类型，直接返回
 					ret == null ? "" : ret;
 			}
 
@@ -6974,31 +7139,45 @@ jQuery.fn.extend({
 		return this.each(function( i ) {
 			var val;
 
+            // 不是元素类型，直接返回
 			if ( this.nodeType !== 1 ) {
 				return;
 			}
 
+            // 参数是函数
 			if ( isFunction ) {
+                // 得到一个新的 value 值，其中 jQuery( this ).val()  是原来的 value 值
 				val = value.call( this, i, jQuery( this ).val() );
 			} else {
 				val = value;
 			}
 
 			// Treat null/undefined as ""; convert numbers to string
+            // undefined | null -> ""
 			if ( val == null ) {
 				val = "";
+            // 数字转化为字符串
 			} else if ( typeof val === "number" ) {
 				val += "";
+            // 对数组的每一项转成字符串
 			} else if ( jQuery.isArray( val ) ) {
 				val = jQuery.map(val, function ( value ) {
+                    // 根据 jQuery.map 方法的定义，这里的 value 是数组的元素，而不是元素索引
 					return value == null ? "" : value + "";
 				});
+                /*
+                val = [null,23,'232','abc']
+                -> var = ["", "23", "232", "abc"]
+                */
 			}
-
+            // 至此，已经把需要设置的 val 修正完毕
+            
+            // select 标签就需要钩子做兼容
 			hooks = jQuery.valHooks[ this.type ] || jQuery.valHooks[ this.nodeName.toLowerCase() ];
 
 			// If set returns undefined, fall back to normal setting
 			if ( !hooks || !("set" in hooks) || hooks.set( this, val, "value" ) === undefined ) {
+                // 没有用钩子设置，就在这里直接赋值
 				this.value = val;
 			}
 		});
@@ -7112,31 +7291,57 @@ jQuery.extend({
 				// uses .value. See #6932
 				var val = elem.attributes.value;
 				return !val || val.specified ? elem.value : elem.text;
+                /*
+                这里一开始，我想当然地以为上面的语句等价于：
+                !val || (val.specified ? elem.value : elem.text);
+
+                一旦 val 为 undefined，以上语句就会执行不通，报错
+
+                其实，看一下运算符优先级：
+                优先级5	逻辑或	从左到右	|| 
+                优先级4	条件运算符	从右到左	? : 
+
+                以上语句应该等价于：
+                (!val || val.specified) ? elem.value : elem.text;
+                ① 当 val 为 undefined 的时候，就返回 elem.value；
+                ② 否则当 val.specified 为真，返回 elem.text
+                */
 			}
 		},
+        /*
+        <select id="multiple" multiple="multiple">
+            <option selected="selected">Multiple</option>
+            <option>Multiple2</option>
+            <option selected="selected">Multiple3</option>
+        </select>
+        */
 		select: {
 			get: function( elem ) {
 				var value, option,
-					options = elem.options,
-					index = elem.selectedIndex,
-					one = elem.type === "select-one" || index < 0,
-					values = one ? null : [],
-					max = one ? index + 1 : options.length,
+					options = elem.options,     //  [option, option, option, selectedIndex: 1]
+					index = elem.selectedIndex, // 1
+					one = elem.type === "select-one" || index < 0, // false
+					values = one ? null : [],  // []
+					max = one ? index + 1 : options.length, // 3
 					i = index < 0 ?
 						max :
-						one ? index : 0;
+						one ? index : 0; // 0
 
 				// Loop through all the selected options
+                // 遍历所有选中的 option
 				for ( ; i < max; i++ ) {
 					option = options[ i ];
 
 					// IE6-9 doesn't update selected after form reset (#2551)
+                    // 确保当前 option 被选中了
 					if ( ( option.selected || i === index ) &&
 							// Don't return options that are disabled or in a disabled optgroup
+                            // 确保 option 没有 disabled，并且父节点也不能 disabled，父节点也不能是 optgroup
 							( jQuery.support.optDisabled ? !option.disabled : option.getAttribute("disabled") === null ) &&
 							( !option.parentNode.disabled || !jQuery.nodeName( option.parentNode, "optgroup" ) ) ) {
 
 						// Get the specific value for the option
+                        // 获取每一个 option 的 value
 						value = jQuery( option ).val();
 
 						// We don't need an array for one selects
@@ -7145,6 +7350,7 @@ jQuery.extend({
 						}
 
 						// Multi-Selects return an array
+                        // Multi-Selects 返回一个数组
 						values.push( value );
 					}
 				}
@@ -7160,12 +7366,18 @@ jQuery.extend({
 
 				while ( i-- ) {
 					option = options[ i ];
+                    /*
+                    option.selected 的值被设为 true 或 false
+                    如果某个 option 的值 jQuery(option).val() 就是我们要设置的 values 这个数组里
+                    那么，这个 option.selected 就是 true
+                    */
 					if ( (option.selected = jQuery.inArray( jQuery(option).val(), values ) >= 0) ) {
 						optionSet = true;
 					}
 				}
 
 				// force browsers to behave consistently when non-matching value is set
+                // 如果一个都没有匹配到，将 selectedIndex 强制改成 -1
 				if ( !optionSet ) {
 					elem.selectedIndex = -1;
 				}
@@ -7219,6 +7431,7 @@ jQuery.extend({
 
          */ 
         // 获取钩子方法，解决真的某种属性的【设置/获取】兼容问题
+        // 类型不为元素节点，或者不是 xml 节点
 		if ( nType !== 1 || !jQuery.isXMLDoc( elem ) ) {
 			name = name.toLowerCase();
 			hooks = jQuery.attrHooks[ name ] ||
@@ -7293,17 +7506,41 @@ jQuery.extend({
 		var name, propName,
 			i = 0,
 			attrNames = value && value.match( core_rnotwhite );
+        /*  
+            var core_rnotwhite = /\S+/g;
 
+            "selected highlight".match(/\S+/g)
+            // ["selected", "highlight"]
+
+            如果这里的 value 不是字符串，果断报错！
+        */
+
+        // 获取到了 attribute 名，并且是元素
 		if ( attrNames && elem.nodeType === 1 ) {
 			while ( (name = attrNames[i++]) ) {
+                /*
+                propFix: {
+                    "for": "htmlFor",
+                    "class": "className"
+                }
+                修正属性名，比如取一个元素的 class 应该是：
+                elem['className'] 或 elem.className
+                */
 				propName = jQuery.propFix[ name ] || name;
 
 				// Boolean attributes get special treatment (#10870)
+                /*
+                jQuery.expr.match.bool : 
+                /^(?:checked|selected|async|autofocus|autoplay|controls|defer|disabled|hidden|ismap|loop|multiple|open|readonly|required|scoped)$/i
+                
+                这种值为布尔值的属性区别对待
+                */
 				if ( jQuery.expr.match.bool.test( name ) ) {
 					// Set corresponding property to false
 					elem[ propName ] = false;
 				}
-
+                
+                // 一般情况下，直接调用原生的 removeAttribute 方法
 				elem.removeAttribute( name );
 			}
 		}
@@ -7345,6 +7582,7 @@ jQuery.extend({
 		}
 	},
 
+    // 修正属性名，比如获取 class，应该是 elem.className
 	propFix: {
 		"for": "htmlFor",
 		"class": "className"
@@ -7355,23 +7593,34 @@ jQuery.extend({
 			nType = elem.nodeType;
 
 		// don't get/set properties on text, comment and attribute nodes
+        // 文本，注释，属性等节点类型直接返回（undefined）
 		if ( !elem || nType === 3 || nType === 8 || nType === 2 ) {
 			return;
 		}
 
+        // 不是 xml
 		notxml = nType !== 1 || !jQuery.isXMLDoc( elem );
 
 		if ( notxml ) {
 			// Fix name and attach hooks
+            /* 
+            先修正属性名，然后去 hooks 里匹配
+            propHooks: {
+                tabIndex: {
+                    get: function( elem ) {}
+                }
+            }
+            */
 			name = jQuery.propFix[ name ] || name;
 			hooks = jQuery.propHooks[ name ];
 		}
-
+        
+        // 设置 prop，一般情况下：elem[ name ] = value
 		if ( value !== undefined ) {
 			return hooks && "set" in hooks && (ret = hooks.set( elem, value, name )) !== undefined ?
 				ret :
 				( elem[ name ] = value );
-
+        // 获取 prop，一般情况下：elem[ name ]
 		} else {
 			return hooks && "get" in hooks && (ret = hooks.get( elem, name )) !== null ?
 				ret :
@@ -7382,6 +7631,13 @@ jQuery.extend({
 	propHooks: {
 		tabIndex: {
 			get: function( elem ) {
+                /*
+                rfocusable = /^(?:input|select|textarea|button)$/i;
+
+                rfocusable.test('input') // true
+
+                【input|select|textarea|button 等标签或带有 tabindex、href 等属性的元素】，取其 tabIndex 属性
+                */
 				return elem.hasAttribute( "tabindex" ) || rfocusable.test( elem.nodeName ) || elem.href ?
 					elem.tabIndex :
 					-1;
@@ -7391,6 +7647,7 @@ jQuery.extend({
 });
 
 // Hooks for boolean attributes
+// 解决设置【值为布尔值的属性】的时候的兼容问题
 boolHook = {
 	set: function( elem, value, name ) {
 		if ( value === false ) {
@@ -7402,6 +7659,16 @@ boolHook = {
 		return name;
 	}
 };
+
+/*
+jQuery.expr.match.bool : /^(?:checked|selected|async|autofocus|autoplay|controls|defer|disabled|hidden|ismap|loop|multiple|open|readonly|required|scoped)$/i
+jQuery.expr.match.bool.source : "^(?:checked|selected|async|autofocus|autoplay|controls|defer|disabled|hidden|ismap|loop|multiple|open|readonly|required|scoped)$"
+
+typeof jQuery.expr.match.bool.source // "string"
+
+jQuery.expr.match.bool.source.match( /\w+/g ) 
+-> ["checked", "selected", "async", "autofocus", "autoplay", "controls", "defer", "disabled", "hidden", "ismap", "loop", "multiple", "open", "readonly", "required", "scoped"]
+*/
 jQuery.each( jQuery.expr.match.bool.source.match( /\w+/g ), function( i, name ) {
 	var getter = jQuery.expr.attrHandle[ name ] || jQuery.find.attr;
 
