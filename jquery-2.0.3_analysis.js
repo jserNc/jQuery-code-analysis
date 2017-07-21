@@ -6875,6 +6875,9 @@ jQuery.fn.extend({
 			len = this.length,
 			proceed = arguments.length === 0 || typeof value === "string" && value;
             /*
+            注意：这里的 && 运算符优先级高于 || ，所以以上代码相当于：
+            proceed = arguments.length === 0 || (typeof value === "string" && value);
+
             ① 如果不传参数，那么 proceed 就是 true，后面就会删除所有的 class
             ② 如果参数 value 不是空字符串，那么那么 proceed 就是 true，后面会删除对应的 class
                （这里有个另类：如果 value 是 ' '，typeof ' ' === "string" && ' ' -> ' '，
@@ -7525,6 +7528,10 @@ jQuery.extend({
                 }
                 修正属性名，比如取一个元素的 class 应该是：
                 elem['className'] 或 elem.className
+
+                所以，这两种写法都可以删除 class
+                ① $('#div1').removeAttr('class');
+                ② $('#div1').removeAttr('className');
                 */
 				propName = jQuery.propFix[ name ] || name;
 
@@ -7583,10 +7590,28 @@ jQuery.extend({
 	},
 
     // 修正属性名，比如获取 class，应该是 elem.className
+    
 	propFix: {
 		"for": "htmlFor",
 		"class": "className"
 	},
+    /*
+    后面还有兼容以下属性的小写形式：
+    jQuery.each([
+        "tabIndex",
+        "readOnly",
+        "maxLength",
+        "cellSpacing",
+        "cellPadding",
+        "rowSpan",
+        "colSpan",
+        "useMap",
+        "frameBorder",
+        "contentEditable"
+    ], function() {
+        jQuery.propFix[ this.toLowerCase() ] = this;
+    });
+     */
 
 	prop: function( elem, name, value ) {
 		var ret, hooks, notxml,
@@ -7628,7 +7653,27 @@ jQuery.extend({
 		}
 	},
 
+    /*
+    下面写道：
+    if ( !jQuery.support.optSelected ) {
+        jQuery.propHooks.selected = {
+            get: function( elem ) {
+                var parent = elem.parentNode;
+                if ( parent && parent.parentNode ) {
+                    parent.parentNode.selectedIndex;
+                }
+                return null;
+            }
+        };
+    }
+    只要在获取option的selected的值时，先访问select.selectedIndex属性，就可以设置option.selected = true了。
+    意思就是在访问option的selected属性时，先访问其父级select元素的selectedIndex属性，
+    强迫浏览器计算option的selected属性，以得到正确的值。
+    需要注意的是option元素的父元素不一定是select，也有可能是optgroup。
+    这里是支持IE9+,所以option的parentNode是optgroup，optgroup的parentNode是select。
+     */  
 	propHooks: {
+        // tab 键获取焦点顺序
 		tabIndex: {
 			get: function( elem ) {
                 /*
@@ -7637,6 +7682,8 @@ jQuery.extend({
                 rfocusable.test('input') // true
 
                 【input|select|textarea|button 等标签或带有 tabindex、href 等属性的元素】，取其 tabIndex 属性
+
+                换个角度想：能获取焦点的，一定是用鼠标点击有效果的交互元素
                 */
 				return elem.hasAttribute( "tabindex" ) || rfocusable.test( elem.nodeName ) || elem.href ?
 					elem.tabIndex :
@@ -7693,6 +7740,18 @@ jQuery.each( jQuery.expr.match.bool.source.match( /\w+/g ), function( i, name ) 
 
 // Support: IE9+
 // Selectedness for an option in an optgroup can be inaccurate
+/*
+ie 下创建一个 select 下拉菜单的时候，默认没有 option 子项选中的
+其他浏览器默认第一个 option 是选中状态，所以，这里做一个兼容
+
+上文有一个 propHooks.tabIndex 这里针对部分浏览器有 jQuery.propHooks.selected
+
+只要在获取option的selected的值时，先访问select.selectedIndex属性，就可以设置option.selected = true了。
+意思就是在访问option的selected属性时，先访问其父级select元素的selectedIndex属性，
+强迫浏览器计算option的selected属性，以得到正确的值。
+需要注意的是option元素的父元素不一定是select，也有可能是optgroup。
+这里是支持IE9+,所以option的parentNode是optgroup，optgroup的parentNode是select。
+ */
 if ( !jQuery.support.optSelected ) {
 	jQuery.propHooks.selected = {
 		get: function( elem ) {
@@ -7705,6 +7764,7 @@ if ( !jQuery.support.optSelected ) {
 	};
 }
 
+// 兼容这些属性的小写形式
 jQuery.each([
 	"tabIndex",
 	"readOnly",
@@ -7721,6 +7781,7 @@ jQuery.each([
 });
 
 // Radios and checkboxes getter/setter
+// 兼容 radio、checkbox 的设置和获取
 jQuery.each([ "radio", "checkbox" ], function() {
 	jQuery.valHooks[ this ] = {
 		set: function( elem, value ) {
@@ -7737,6 +7798,9 @@ jQuery.each([ "radio", "checkbox" ], function() {
 		};
 	}
 });
+
+
+
 var rkeyEvent = /^key/,
 	rmouseEvent = /^(?:mouse|contextmenu)|click/,
 	rfocusMorph = /^(?:focusinfocus|focusoutblur)$/,
