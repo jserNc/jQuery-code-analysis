@@ -5710,12 +5710,14 @@ Data.prototype = {
                 Object.defineProperty(obj, prop, descriptor)：给一个属性添加描述
 
                 Object.defineProperties 的第二个参数示例：
-                descriptor = {
+                descriptors = {
                     jQuery2030182001339212814580.7107637158134246 : {value : 1},
                     jQuery2030182001339212814580.3427632463276477 : {value : 2},
                     jQuery2030182001339212814580.5498736534657347 : {value : 3}
                 };
-                这里的 jQuery2030182001339212814580.7107637158134246 相当于 prop；{value : 1} 相当于 descriptor
+
+                jQuery2030182001339212814580.7107637158134246 相当于 prop；
+                {value : 1} 相当于 descriptor
 
                 其中：
                 value: 设置属性的值
@@ -7719,12 +7721,18 @@ jQuery.expr.match.bool.source.match( /\w+/g )
 jQuery.each( jQuery.expr.match.bool.source.match( /\w+/g ), function( i, name ) {
 	var getter = jQuery.expr.attrHandle[ name ] || jQuery.find.attr;
 
+    // 重新定义 jQuery.expr.attrHandle[ name ] 方法
 	jQuery.expr.attrHandle[ name ] = function( elem, name, isXML ) {
-		var fn = jQuery.expr.attrHandle[ name ],
+		    // 暂存 jQuery.expr.attrHandle[ name ]
+        var fn = jQuery.expr.attrHandle[ name ],
 			ret = isXML ?
 				undefined :
 				/* jshint eqeqeq: false */
 				// Temporarily disable this handler to check existence
+                /*
+                这里需要短暂的把 jQuery.expr.attrHandle[ name ] 方法置为 undefined，
+                是因为 jQuery.find.attr 会调用 jQuery.expr.attrHandle[ name ]
+                */
 				(jQuery.expr.attrHandle[ name ] = undefined) !=
 					getter( elem, name, isXML ) ?
 
@@ -7732,6 +7740,7 @@ jQuery.each( jQuery.expr.match.bool.source.match( /\w+/g ), function( i, name ) 
 					null;
 
 		// Restore handler
+        // 恢复 jQuery.expr.attrHandle[ name ]
 		jQuery.expr.attrHandle[ name ] = fn;
 
 		return ret;
@@ -7824,6 +7833,85 @@ function safeActiveElement() {
  * Helper functions for managing events -- not part of the public interface.
  * Props to Dean Edwards' addEvent library for many of the ideas.
  */
+/*
+事件绑定有多种方式，以 click 事件为例：
+
+① $('#foo').click(function(){ })
+② $('#foo').bind('click',function(){ })
+③ $("foo").delegate("td", "click", function() { });
+④ $("foo").on("click", "td", function() { });
+
+以上 4 种方式，本质上一样，最后都是交给 on 方法处理的，流程如下：
+elem.on('click','p',function(){});
+-> jQuery.fn.on
+-> jQuery.event.add         给选中元素注册事件处理程序
+-> jQuery.event.dispatch    分派（执行）事件处理函数
+-> jQuery.event.fix         修正 Event 对象
+-> jQuery.event.handlers    组装事件处理器队列
+-> 执行事件处理函数
+
+jQuery 还做了以下工作：
+（1）兼容问题处理
+    ① 事件对象的获取兼容，IE的event在是在全局的window，标准的是event是事件源参数传入到回调函数中
+    ② 目标对象的获取兼容，IE中采用srcElement，标准是target
+    ③ relatedTarget只是对于mouseout、mouseover有用。在IE中分成了to和from两个Target变量，在mozilla中 没有分开。为了保证兼容，采用relatedTarget统一起来
+    ④ event的坐标位置兼容
+    ...
+
+（2）事件的存储优化
+    jQuery并没有将事件处理函数直接绑定到DOM元素上，
+    而是通过.data存储在缓存.data存储在缓存.cahce上，
+    这里就是之前分析的贯穿整个体系的缓存系统了
+    
+    ① 声明绑定的时候：
+    首先为DOM元素分配一个唯一ID，绑定的事件存储在
+    .cahce[唯一ID][.expand ][ 'events' ]上，
+    而events是个键-值映射对象，键就是事件类型，对应的值就是由事件处理函数组成的数组，
+    最后在DOM元素上绑定（addEventListener/ attachEvent）一个事件处理函数eventHandle，
+    这个过程由 jQuery.event.add 实现。
+    
+    ② 执行绑定的时候：
+    当事件触发时eventHandle被执行，
+    eventHandle再去$.cache中寻找曾经绑定的事件处理函数并执行，
+    这个过程由 jQuery.event. trigger 和 jQuery.event.handle实现。
+
+    ③ 事件销毁
+    事件的销毁则由jQuery.event.remove 实现，
+    remove对缓存$.cahce中存储的事件数组进行销毁，
+    当缓存中的事件全部销毁时，
+    调用removeEventListener/detachEvent销毁绑定在DOM元素上的事件处理函数eventHandle。
+
+（3）事件处理器 jQuery.event.handlers
+    针对【事件代理】和【原生事件】（例如"click"）绑定，区别对待：
+    事件委托从队列头部推入，而普通事件绑定从尾部推入，
+    通过记录delegateCount来划分，委托(delegate)绑定和普通绑定。
+
+    这里的【事件代理】和【原生事件】这样理解：
+
+    如果有一个表格有100个tr元素，每个都要绑定mouseover/mouseout事件，
+    改成事件代理的方式，可以节省99次绑定，更何况它还能监听将来添加的tr元素。
+
+    这种机制使用的是事件冒泡机制实现的，我们把事件处理函数绑定在tr的父元素上，
+    然后再tr上面触发的事件会冒泡到tr的父元素，因此父元素就可以触发这个事件处理函数，
+    在事件处理函数中就可以通过这个event获取到事件源，然后对事件源tr进行处理。
+
+    使用事件代理时，最好是绑定目标元素的父元素，
+    因为绑定document的话，在IE下有时还是会失灵。
+
+    不过，这样需要对一些不冒泡的事件做一些处理，
+    比如一些表单事件，有的只冒泡到form，有的冒泡到document，有的压根不冒泡。
+
+    对于focus，blur，change，submit，reset，select等
+    不会冒泡的事件（有些浏览器支持，有些不支持），
+    在标准浏览器下，我们可以设置addEventListener的最后一个参数为true（捕获）就行了，
+    因为捕获操作的话，事件会从document到事件源，这时就能使用事件代理机制了。
+    IE就比较麻烦了，要用focusin代替focus，focusout代替blur，selectstart代替select。
+    change，submit，reset就复杂了，必须用其他事件来模拟，还要判断事件源的类型，
+    selectedIndex，keyCode等相关属性。
+    
+    这个课题被一个叫reglib的库搞定了。
+    jQuery就是吸取了reglib的经验，兼容了各种事件。
+*/
 jQuery.event = {
 
 	global: {},
@@ -7834,32 +7922,80 @@ jQuery.event = {
 			events, t, handleObj,
 			special, handlers, type, namespaces, origType,
 			elemData = data_priv.get( elem );
+        /*
+        这里 get 方法没有第二个参数 key，那就把这个 elem 对应的所有的数据都取出来
+        cache = {
+            "0": { },
+            "1": { // DOM节点1缓存数据，
+                "name1": value1,
+                "name2": value2
+            },
+            "2": { // DOM节点2缓存数据，
+                "name1": value1,
+                "name2": value2
+            }
+            // ......
+        };
+
+        这里的 elemData 是 cache 里一个属性（对象）。
+        data_priv.get( elem ) 这个方法的作用是：
+        ① 如果之前已经给这个 elem 缓存过数据，就返回对应的缓存对象；
+        ② 如果之前没缓存过数据，那就新创建一个缓存对象，并作为返回值；
+
+        通过分析 Data.prototype.get 源码，之所以有这个效果，其实是因为：
+        Data.prototype.key 方法，这个方法执行时，如果 elem 没有缓存过数据，就新开辟一个 {}
+        并返回这个 {} 在 cache 中对应的索引
+
+        而 get 方法中： cache = this.cache[ this.key( owner ) ]
+        this.key( owner ) 创建一个新的 {}，并返回索引 n，
+        this.cache[n] 就可以找到这个 {} 了。
+
+        所以，elemData 就是对这个 {} 的引用了，下面对 elemData 的操作就是对这个 {} 的操作！！
+        所以，下面压根看不到对 elemData 的存储操作，【所改即所得】嘛！
+        */
 
 		// Don't attach events to noData or text/comment nodes (but allow plain objects)
+        // elemData 必定是一个对象，如果是假，那肯定有问题了，赶紧返回！
 		if ( !elemData ) {
 			return;
 		}
 
 		// Caller can pass in an object of custom data in lieu of the handler
-		if ( handler.handler ) {
+		/*
+        如果传进来的事件处理函数是一个json对象
+        {
+            handler:function(){处理函数},
+            selector:执行上下文
+         }
+        */
+        if ( handler.handler ) {
 			handleObjIn = handler;
 			handler = handleObjIn.handler;
 			selector = handleObjIn.selector;
 		}
 
 		// Make sure that the handler has a unique ID, used to find/remove it later
-		if ( !handler.guid ) {
+		// 给 handler 事件处理函数添加一个唯一的 id
+        if ( !handler.guid ) {
 			handler.guid = jQuery.guid++;
 		}
 
 		// Init the element's event structure and main handler, if this is the first
-		if ( !(events = elemData.events) ) {
+		// 如果 elemData 没有 events 属性，初始化一个空对象
+        if ( !(events = elemData.events) ) {
 			events = elemData.events = {};
 		}
+
+        /*
+        如果 elemData 没有 handle 属性，把一个函数赋值给它
+        */
 		if ( !(eventHandle = elemData.handle) ) {
 			eventHandle = elemData.handle = function( e ) {
 				// Discard the second event of a jQuery.event.trigger() and
 				// when an event is called after a page has unloaded
+                /*
+                core_strundefined : "undefined"
+                */
 				return typeof jQuery !== core_strundefined && (!e || jQuery.event.triggered !== e.type) ?
 					jQuery.event.dispatch.apply( eventHandle.elem, arguments ) :
 					undefined;
@@ -7869,31 +8005,85 @@ jQuery.event = {
 		}
 
 		// Handle multiple events separated by a space
+        /*
+        core_rnotwhite = /\S+/g
+
+        多个事件合在一个字符串里拆开：
+        "click mouseover".match(/\S+/g) ->  ["click", "mouseover"]
+        */
 		types = ( types || "" ).match( core_rnotwhite ) || [""];
 		t = types.length;
 		while ( t-- ) {
+            /*
+            rtypenamespace = /^([^.]*)(?:\.(.+)|)$/;
+            匹配命名空间
+
+            ① rtypenamespace.exec('aa') 
+            ->  ["aa", "aa", undefined, index: 0, input: "aa"]
+
+            ② rtypenamespace.exec('aa.')
+            -> null 
+            
+            ③ rtypenamespace.exec('aa.bb')
+            -> ["aa.bb", "aa", "bb", index: 0, input: "aa.bb"]
+
+            ④ rtypenamespace.exec('aa.bb.cc')
+            -> ["aa.bb.cc", "aa", "bb.cc", index: 0, input: "aa.bb.cc"]
+            */
 			tmp = rtypenamespace.exec( types[t] ) || [];
 			type = origType = tmp[1];
+            /*
+            (1) type :
+            'aa' 或 undefined
+
+            (2) namespaces
+            "bb.cc".split( "." ).sort() -> ["bb", "cc"]
+            或：
+            "".split( "." ) -> [""]
+            */
 			namespaces = ( tmp[2] || "" ).split( "." ).sort();
 
 			// There *must* be a type, no attaching namespace-only handlers
+            // type 为 undefined，跳出本次循环
 			if ( !type ) {
 				continue;
 			}
 
 			// If event changes its type, use the special event handlers for the changed type
 			special = jQuery.event.special[ type ] || {};
-
+            /*
+            special: {
+                load: {
+                    noBubble: true
+                },
+                click: {
+                    trigger: function() {...},
+                    _default: function( event ) {...}
+                },
+                focus: {
+                    trigger: function() {},
+                    delegateType: "focusin"
+                }
+                ...
+            }
+            不是所有的事件名可以直接使用的，有些事件名需要修正，比如 focus、blur
+            */
 			// If selector defined, determine special event api type, otherwise given type
 			type = ( selector ? special.delegateType : special.bindType ) || type;
 
 			// Update special based on newly reset type
+            // 根据新的 type 修正 special
 			special = jQuery.event.special[ type ] || {};
 
 			// handleObj is passed to all event handlers
+            /*
+            根据上文，handleObjIn 可能是对象，也可能是 undefined
+            jQuery.extend 如果有 2 个参数，那就第二个参数的属性复制给第一个参数
+            这里确定是 2 个参数，只不过当第二个参数是 undefined 时，不会把 undefined 复制过去
+            */
 			handleObj = jQuery.extend({
-				type: type,
-				origType: origType,
+				type: type, // 修正后的事件类型
+				origType: origType, // 真正的事件类型
 				data: data,
 				handler: handler,
 				guid: handler.guid,
@@ -7903,13 +8093,31 @@ jQuery.event = {
 			}, handleObjIn );
 
 			// Init the event handler queue if we're the first
+            /*
+            上面写：
+            events = elemData.events
+            */
+            /*
+            ① 当前类型事件处理数组不存在的时候，就创建这个数组，并事件绑定
+            elem.addEventListener( type, eventHandle, false );
+            ② 每个新的类型过来都会绑定一次，例如 click ，mouseover 事件都会分别绑定
+            ③ 同类型的事件过来就不走这里了，直接加到 handlers 里
+            */
 			if ( !(handlers = events[ type ]) ) {
 				handlers = events[ type ] = [];
 				handlers.delegateCount = 0;
+                /*
+                 handlers -> [delegateCount: 0]
+                 handlers["delegateCount"] -> 0
+
+                 handlers.delegateCount 为【事件代理】个数
+                */
+                
 
 				// Only use addEventListener if the special events handler returns false
 				if ( !special.setup || special.setup.call( elem, data, namespaces, eventHandle ) === false ) {
 					if ( elem.addEventListener ) {
+                        // 绑定事件
 						elem.addEventListener( type, eventHandle, false );
 					}
 				}
@@ -7924,6 +8132,20 @@ jQuery.event = {
 			}
 
 			// Add to the element's handler list, delegates in front
+            /*
+            arrayObject.splice(index,howmany,item1,.....,itemX)
+            其中：
+            index: 规定添加/删除项目的位置，使用负数可从数组结尾处规定位置
+            howmany: 要删除的项目数量。如果设置为 0，则不会删除项目
+            item1,.....,itemX: 向数组添加的新项目。
+
+            事件委托集中在队列前面，原生事件加在队列尾部
+
+            前面有：
+            elemData = data_priv.get( elem );
+            events = elemData.events;
+            handlers = events[ type ];
+            */
 			if ( selector ) {
 				handlers.splice( handlers.delegateCount++, 0, handleObj );
 			} else {
@@ -7935,8 +8157,53 @@ jQuery.event = {
 		}
 
 		// Nullify elem to prevent memory leaks in IE
+        // elem 置为 null，防止 ie 下内存泄漏
 		elem = null;
 	},
+    /*
+    add 方法的作用是：将所有参数合并成一个 handleObj 对象，并把这个对象放到缓存系统中。
+    每个不同的事件类型都有一个处理函数数组 handlers，比如 click 事件有自己的 handlers，
+    mouseover 事件也有自己的 handlers。
+
+    对于同一个元素只会绑定一次事件处理函数 eventHandle ，所有的事件都由这个方法
+    来分发，它会根据事件的类型来触发相应的事件处理函数。比如 click 事件发生了， 
+    eventHandle 会执行 click 对应的 handlers 数组里的所有方法。
+    
+    ① elemData.handle
+    eventHandle = elemData.handle = function( e ) {}
+    调用了 jQuery.event.dispatch 函数来根据事件类型分发事件
+
+    ② elemData.events
+    elemData = data_priv.get( elem );
+    events = elemData.events;
+    handlers = events[ type ];
+
+    elemData : {
+        handle : function( e ) {},
+        events : {
+            click : [handleObj,handleObj,handleObj,...]
+            mouseover : [handleObj,handleObj,handleObj,...]
+            mousedown : [handleObj,handleObj,handleObj,...]
+        }
+    }
+
+    elem 在缓存系统中的对应值是 elemData，它有 handle、events 等两个属性。
+
+    handle 是一个回调函数，并且它有一个 elem 属性指向 elem 元素。比如，
+    click 事件发生时，会触发 handle 函数，handle 函数执行 click 事件
+    相应的 eventHandle 来执行 handlers 数组里的所有方法。
+
+    events 是一个 json 对象，有 click、mouseover 等与多种事件对应的属性。
+    这里每个属性有分别对应一个 handlers 数组。handlers.delegateCount 表示
+    代理事件个数。
+
+    总结一下 jQuery.event.add 函数：
+    ① 如果没有为委托元素 elem 建立缓存，在调用 get 时创建缓存；
+    ② 赋予 elemData.handle 一个匿名函数，调用 jQuery.event.dispatch 函数。
+    ③ 往 elemData.events 对象添加不同事件类型的事件对象数组 [handleObj,handleObj..]。
+    ④ 给 elem 绑定一个 type 类型的事件，触发时调用 elemData.handle。
+
+    */
 
 	// Detach an event or set of events from an element
 	remove: function( elem, types, handler, selector, mappedTypes ) {
