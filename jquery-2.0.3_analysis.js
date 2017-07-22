@@ -7099,6 +7099,7 @@ jQuery.fn.extend({
                         set: function( elem, value ) {}
                     }
                 }
+                （其实除了这个字面定义，后面还有动态添加 radio、chechbox 等标签）
 
                 ① elem.type
                 一般元素的 type 是 undefined，如 
@@ -7177,12 +7178,28 @@ jQuery.fn.extend({
 			}
             // 至此，已经把需要设置的 val 修正完毕
             
-            // select 标签就需要钩子做兼容
+            // select、radio、checkbox 等标签需要钩子做兼容
 			hooks = jQuery.valHooks[ this.type ] || jQuery.valHooks[ this.nodeName.toLowerCase() ];
 
 			// If set returns undefined, fall back to normal setting
 			if ( !hooks || !("set" in hooks) || hooks.set( this, val, "value" ) === undefined ) {
-                // 没有用钩子设置，就在这里直接赋值
+                /*
+                相当于：
+
+                if (hooks){
+                    if ("set" in hooks){
+                        if (hooks.set( this, val, "value" ) === undefined){
+                            this.value = val;
+                        }
+                    } else {
+                        this.value = val;
+                    }
+                } else {
+                    this.value = val;
+                }
+
+                没有用钩子兼容情况，就在这里直接赋值
+                 */
 				this.value = val;
 			}
 		});
@@ -7297,7 +7314,7 @@ jQuery.extend({
 				var val = elem.attributes.value;
 				return !val || val.specified ? elem.value : elem.text;
                 /*
-                这里一开始，我想当然地以为上面的语句等价于：
+                这里一开始，我想当然的以为上面的语句等价于：
                 !val || (val.specified ? elem.value : elem.text);
 
                 一旦 val 为 undefined，以上语句就会执行不通，报错
@@ -7310,6 +7327,14 @@ jQuery.extend({
                 (!val || val.specified) ? elem.value : elem.text;
                 ① 当 val 为 undefined 的时候，就返回 elem.value；
                 ② 否则当 val.specified 为真，返回 elem.text
+
+                eg: 
+                ① 有明确的 value 属性，返回这个 value 属性：
+                <option id="opt" value="hello">111</option>
+                opt.value // hello
+                ② 没有明确的 value 属性，返回文本属性
+                <option id="opt">111</option>
+                opt.value // 111
                 */
 			}
 		},
@@ -7325,8 +7350,8 @@ jQuery.extend({
 				var value, option,
 					options = elem.options,     //  [option, option, option, selectedIndex: 1]
 					index = elem.selectedIndex, // 1
-					one = elem.type === "select-one" || index < 0, // false
-					values = one ? null : [],  // []
+					one = elem.type === "select-one" || index < 0, // false 单选还是多选
+					values = one ? null : [],  // [] 单选下拉的时候值只有一个，多选下拉值是一组
 					max = one ? index + 1 : options.length, // 3
 					i = index < 0 ?
 						max :
@@ -7363,6 +7388,7 @@ jQuery.extend({
 				return values;
 			},
 
+            // value 和某个option 匹配上了，就选中了那个 option
 			set: function( elem, value ) {
 				var optionSet, option,
 					options = elem.options,
@@ -7794,6 +7820,7 @@ jQuery.each([
 jQuery.each([ "radio", "checkbox" ], function() {
 	jQuery.valHooks[ this ] = {
 		set: function( elem, value ) {
+            // 如果 value 值和【单选框|复选框】的值匹配上了，则选中该【单选框|复选框】
 			if ( jQuery.isArray( value ) ) {
 				return ( elem.checked = jQuery.inArray( jQuery(elem).val(), value ) >= 0 );
 			}
@@ -7803,6 +7830,7 @@ jQuery.each([ "radio", "checkbox" ], function() {
 		jQuery.valHooks[ this ].get = function( elem ) {
 			// Support: Webkit
 			// "" is returned instead of "on" if a value isn't specified
+            // 对于 radio 、 checkbox 大多数的默认值是 on，老版本的 webkit 的默认值却为 null
 			return elem.getAttribute("value") === null ? "on" : elem.value;
 		};
 	}
