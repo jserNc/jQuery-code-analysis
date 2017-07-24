@@ -7869,7 +7869,10 @@ function safeActiveElement() {
 ③ $("foo").delegate("td", "click", function() { });
 ④ $("foo").on("click", "td", function() { });
 
-以上 4 种方式，本质上一样，最后都是交给 on 方法处理的，流程如下：
+以上 4 种方式，本质上一样，最后都是交给 on 方法处理的
+
+
+on 方法流程如下：
 elem.on('click','p',function(){});
 -> jQuery.fn.on
 -> jQuery.event.add         给选中元素注册事件处理程序
@@ -7882,7 +7885,7 @@ jQuery 还做了以下工作：
 （1）兼容问题处理
     ① 事件对象的获取兼容，IE的event在是在全局的window，标准的是event是事件源参数传入到回调函数中
     ② 目标对象的获取兼容，IE中采用srcElement，标准是target
-    ③ relatedTarget只是对于mouseout、mouseover有用。在IE中分成了to和from两个Target变量，在mozilla中 没有分开。为了保证兼容，采用relatedTarget统一起来
+    ③ relatedTarget只是对于mouseout、mouseover有用。在IE中分成了to和from两个Target变量，在mozilla中没有分开。为了保证兼容，采用relatedTarget统一起来
     ④ event的坐标位置兼容
     ...
 
@@ -7944,6 +7947,10 @@ jQuery.event = {
 
 	global: {},
 
+    /*
+    .on 方法最后会调用：
+    jQuery.event.add( this, types, fn, data, selector )
+    */
 	add: function( elem, types, handler, data, selector ) {
 
 		var handleObjIn, eventHandle, tmp,
@@ -7974,12 +7981,12 @@ jQuery.event = {
         Data.prototype.key 方法，这个方法执行时，如果 elem 没有缓存过数据，就新开辟一个 {}
         并返回这个 {} 在 cache 中对应的索引
 
-        而 get 方法中： cache = this.cache[ this.key( owner ) ]
+        而 Data.prototype.get 方法中： cache = this.cache[ this.key( owner ) ]
         this.key( owner ) 创建一个新的 {}，并返回索引 n，
-        this.cache[n] 就可以找到这个 {} 了。
+        于是，this.cache[n] 就可以找到这个 {} 了。
 
         所以，elemData 就是对这个 {} 的引用了，下面对 elemData 的操作就是对这个 {} 的操作！！
-        所以，下面压根看不到对 elemData 的存储操作，【所改即所得】嘛！
+        所以，下面压根看不到对 elemData 的存储操作，不要觉得奇怪，因为【所改即所得】嘛！
         */
 
 		// Don't attach events to noData or text/comment nodes (but allow plain objects)
@@ -7990,7 +7997,8 @@ jQuery.event = {
 
 		// Caller can pass in an object of custom data in lieu of the handler
 		/*
-        如果传进来的事件处理函数是一个json对象
+        ① 一般情况下 handler 就是一个回调函数 fn
+        ② 如果传进来的事件处理函数是一个json对象
         {
             handler:function(){处理函数},
             selector:执行上下文
@@ -8016,6 +8024,10 @@ jQuery.event = {
 
         /*
         如果 elemData 没有 handle 属性，把一个函数赋值给它
+        这个 handle 属性指向一个函数，
+        这个函数就是实际上绑定在 dom 节点上的唯一处理函数！这很重要！
+        每次触发事件，实际只执行这一个函数，
+        而这个函数封装了 dispatch 函数，最终分发给每一个实际处理函数。
         */
 		if ( !(eventHandle = elemData.handle) ) {
 			eventHandle = elemData.handle = function( e ) {
@@ -8043,36 +8055,29 @@ jQuery.event = {
 		t = types.length;
 		while ( t-- ) {
             /*
+            namespace 命名空间机制。该可以对事件进行更为精细的控制，
+            开发人员可以指定特定空间的事件，删除特定命名空间的事件，
+            以及触发特定命名空间的事件。
+
             rtypenamespace = /^([^.]*)(?:\.(.+)|)$/;
-            匹配命名空间
+            匹配命名空间，把事件和它的命名空间区分开
 
-            ① rtypenamespace.exec('aa') 
-            ->  ["aa", "aa", undefined, index: 0, input: "aa"]
-
-            ② rtypenamespace.exec('aa.')
-            -> null 
-            
-            ③ rtypenamespace.exec('aa.bb')
-            -> ["aa.bb", "aa", "bb", index: 0, input: "aa.bb"]
-
-            ④ rtypenamespace.exec('aa.bb.cc')
-            -> ["aa.bb.cc", "aa", "bb.cc", index: 0, input: "aa.bb.cc"]
+            ① rtypenamespace.exec("keydown.myPlugin.plugin")
+            -> ["keydown.myPlugin.plugin", "keydown", "myPlugin.plugin", index: 0, input: "keydown.myPlugin.plugin"]
             */
 			tmp = rtypenamespace.exec( types[t] ) || [];
 			type = origType = tmp[1];
             /*
-            (1) type :
-            'aa' 或 undefined
+            (1) type 事件：
+            "keydown"
 
-            (2) namespaces
-            "bb.cc".split( "." ).sort() -> ["bb", "cc"]
-            或：
-            "".split( "." ) -> [""]
+            (2) namespaces 命名空间组：
+            "myPlugin.plugin".split( "." ).sort() -> ["myPlugin", "plugin"]
             */
 			namespaces = ( tmp[2] || "" ).split( "." ).sort();
 
 			// There *must* be a type, no attaching namespace-only handlers
-            // type 为 undefined，跳出本次循环
+            // type 为 undefined，跳出本次循环，不注册没事件名的事件
 			if ( !type ) {
 				continue;
 			}
@@ -8097,10 +8102,28 @@ jQuery.event = {
             不是所有的事件名可以直接使用的，有些事件名需要修正，比如 focus、blur
             */
 			// If selector defined, determine special event api type, otherwise given type
-			type = ( selector ? special.delegateType : special.bindType ) || type;
+			/*
+            有 selector 表示是事件委托，比如：
+            浏览器原生的focus事件不冒泡，所以用special来把type转变为'focusin'来模拟冒泡。
+            */
+            type = ( selector ? special.delegateType : special.bindType ) || type;
 
 			// Update special based on newly reset type
-            // 根据新的 type 修正 special
+            /*
+            根据新的 type 修正 special，还是以 focus 为例：
+            ① special = jQuery.event.special[ 'focus' ]
+                special = {
+                    trigger: function() {},
+                    delegateType: "focusin"
+                }
+            ② 存在 selector 时，type = special.delegateType
+            即：type = "focusin"
+            ③ special = jQuery.event.special["focusin"]
+                special =  {
+                    setup: function, 
+                    teardown: function
+                }
+            */
 			special = jQuery.event.special[ type ] || {};
 
 			// handleObj is passed to all event handlers
@@ -8119,6 +8142,9 @@ jQuery.event = {
 				needsContext: selector && jQuery.expr.match.needsContext.test( selector ),
 				namespace: namespaces.join(".")
 			}, handleObjIn );
+            /*
+            jQuery.expr.match.needsContext = /^[\x20\t\r\n\f]*[>+~]|:(even|odd|eq|gt|lt|nth|first|last)(?:\([\x20\t\r\n\f]*((?:-\d)?\d*)[\x20\t\r\n\f]*\)|)(?=[^-]|$)/i
+            */
 
 			// Init the event handler queue if we're the first
             /*
@@ -8143,6 +8169,20 @@ jQuery.event = {
                 
 
 				// Only use addEventListener if the special events handler returns false
+                /*
+                如果没有special.setup函数或者special.setup函数执行后返回false，则直接用addEventListener绑定事件。
+                
+                ① 首先尝试用special.setup来绑定，没有或返回false则回退到addEventListener。
+                ② 几乎所有的事件类型（type）都是用addEventListener来绑定的。
+                因为special中仅 special.focusin special.focusout 有setup，
+                special.focus和special.blur有机会变成前两个，
+                因此所有的非addEventListener注册只可能这4种事件。
+
+                addEventListener注册的是什么？
+                是eventHandle（eventHandle = elemData.handle），
+                这是唯一注册在元素上的事件处理函数！
+                它的作用就是执行dispatch，从而执行真正的事件处理函数（队列）！
+                */
 				if ( !special.setup || special.setup.call( elem, data, namespaces, eventHandle ) === false ) {
 					if ( elem.addEventListener ) {
                         // 绑定事件
@@ -8151,6 +8191,7 @@ jQuery.event = {
 				}
 			}
 
+            // 貌似所有的 special 都没有 add 方法 
 			if ( special.add ) {
 				special.add.call( elem, handleObj );
 
@@ -8167,7 +8208,13 @@ jQuery.event = {
             howmany: 要删除的项目数量。如果设置为 0，则不会删除项目
             item1,.....,itemX: 向数组添加的新项目。
 
-            事件委托集中在队列前面，原生事件加在队列尾部
+            如果有selector，那么就是委托，委托是先处理的。
+            委托排在handlers数组前面，插入到原有委托的最后面，在所有非委托前面（通过delegateCount）定位；
+            不是委托就直接推入到整个数组最后。
+
+            真正的事件处理函数怎么缓存的？
+            处理函数以handler的属性存储在handleObj对象上，
+            当然handleObj对象上还有其它属性以便执行阶段可以用到。
 
             前面有：
             elemData = data_priv.get( elem );
@@ -8179,6 +8226,14 @@ jQuery.event = {
 			} else {
 				handlers.push( handleObj );
 			}
+            /*
+            总结一下：
+            如果 type 这个事件从没出现过时，把eventHandle函数通过addEventListener注册到元素上。
+            如果已经有handlers，那么说明eventHandle已经注册过，无需再次注册，
+            把含有事件处理函数的对象handleObj推入到数组即可。
+            
+            每次绑定的核心就是把handleObj对象添加到事件类型type对应的events[type]上。
+            */
 
 			// Keep track of which events have ever been used, for event optimization
 			jQuery.event.global[ type ] = true;
@@ -8234,6 +8289,7 @@ jQuery.event = {
     */
 
 	// Detach an event or set of events from an element
+    // 删除绑定在元素 elem 上的一个或一组事件
 	remove: function( elem, types, handler, selector, mappedTypes ) {
 
 		var j, origCount, tmp,
@@ -8241,14 +8297,26 @@ jQuery.event = {
 			special, handlers, type, namespaces, origType,
 			elemData = data_priv.hasData( elem ) && data_priv.get( elem );
 
+        // elemData 没数据或者没事件数据，直接返回
 		if ( !elemData || !(events = elemData.events) ) {
 			return;
 		}
 
 		// Once for each type.namespace in types; type may be omitted
+        /*
+        core_rnotwhite = /\S+/g
+
+        "click mouseover".match(/\S+/g) ->  ["click", "mouseover"]
+        */
 		types = ( types || "" ).match( core_rnotwhite ) || [""];
 		t = types.length;
 		while ( t-- ) {
+            /*
+            rtypenamespace.exec('aa.bb.cc')
+            -> tmp = ["aa.bb.cc", "aa", "bb.cc", index: 0, input: "aa.bb.cc"]
+            -> type = "aa"
+            -> namespaces = ["bb", "cc"]
+            */
 			tmp = rtypenamespace.exec( types[t] ) || [];
 			type = origType = tmp[1];
 			namespaces = ( tmp[2] || "" ).split( "." ).sort();
@@ -8264,6 +8332,18 @@ jQuery.event = {
 			special = jQuery.event.special[ type ] || {};
 			type = ( selector ? special.delegateType : special.bindType ) || type;
 			handlers = events[ type ] || [];
+            /*
+            以 tmp[2] = "bb.cc" 为例：
+            namespaces = ( tmp[2] || "" ).split( "." ).sort()
+            -> ["bb","cc"]
+            
+            namespaces.join("\\.(?:.*\\.|)")
+            -> "bb\.(?:.*\.|)cc"
+
+            于是，
+            tmp = new RegExp( "(^|\\.)" + namespaces.join("\\.(?:.*\\.|)") + "(\\.|$)" )
+            -> /(^|\.)bb\.(?:.*\.|)cc(\.|$)/
+            */
 			tmp = tmp[2] && new RegExp( "(^|\\.)" + namespaces.join("\\.(?:.*\\.|)") + "(\\.|$)" );
 
 			// Remove matching events
@@ -8441,11 +8521,20 @@ jQuery.event = {
 		var i, j, ret, matched, handleObj,
 			handlerQueue = [],
 			args = core_slice.call( arguments ),
+            /*
+            jQuery.event.add 方法中是这么调用的：
+            jQuery.event.dispatch.apply( eventHandle.elem, arguments )
+           
+            所以，下面的 this 就是 eventHandle.elem
+
+            handlers 就是对应 type 类型的回调函数数组
+            */
 			handlers = ( data_priv.get( this, "events" ) || {} )[ event.type ] || [],
 			special = jQuery.event.special[ event.type ] || {};
 
 		// Use the fix-ed jQuery.Event rather than the (read-only) native event
-		args[0] = event;
+		// 将 args[0] 从原生的 event 对象替换为修正的 event 对象
+        args[0] = event;
 		event.delegateTarget = this;
 
 		// Call the preDispatch hook for the mapped type, and let it bail if desired
@@ -8454,6 +8543,13 @@ jQuery.event = {
 		}
 
 		// Determine handlers
+        /*
+        handlerQueue 是一个数组，数组元素是：
+        { 
+            elem: 节点, 
+            handlers: [handleObj,handleObj...]
+         }
+        */
 		handlerQueue = jQuery.event.handlers.call( this, event, handlers );
 
 		// Run delegates first; they may want to stop propagation beneath us
@@ -8466,11 +8562,19 @@ jQuery.event = {
 
 				// Triggered event must either 1) have no namespace, or
 				// 2) have namespace(s) a subset or equal to those in the bound event (both can have no namespace).
+                /*
+                event没有空间名或者handleObj的空间名符合event的空间名的才能进入下一步
+                */
 				if ( !event.namespace_re || event.namespace_re.test( handleObj.namespace ) ) {
 
 					event.handleObj = handleObj;
 					event.data = handleObj.data;
-
+                    
+                    /* 
+                    这里真正执行回调方法
+                    ① 首先还是尝试 jQuery.event.special[ handleObj.origType ].handle 来执行，
+                    ② 否则用 handleObj.handler 来执行
+                    */
 					ret = ( (jQuery.event.special[ handleObj.origType ] || {}).handle || handleObj.handler )
 							.apply( matched.elem, args );
 
@@ -8485,13 +8589,23 @@ jQuery.event = {
 		}
 
 		// Call the postDispatch hook for the mapped type
+        /*
+        只有 jQuery.event.speical.beforeunload 有 postDispatch 属性，
+        就是修复 Firefox 在 event.originalEvent.returnValue 没有设置时不 alert
+        */
 		if ( special.postDispatch ) {
 			special.postDispatch.call( this, event );
 		}
 
+        // 返回最后的执行结果
 		return event.result;
 	},
 
+    /*
+    参数：
+    event：修正过的 event 对象
+    handlers：获取到的 handleObj 队列
+    */
 	handlers: function( event, handlers ) {
 		var i, matches, sel, handleObj,
 			handlerQueue = [],
@@ -8501,13 +8615,36 @@ jQuery.event = {
 		// Find delegate handlers
 		// Black-hole SVG <use> instance trees (#13180)
 		// Avoid non-left-click bubbling in Firefox (#3861)
+        /*
+        !event.button || event.type !== "click"
+        是为了防止火狐非左键点击的冒泡
+        */
 		if ( delegateCount && cur.nodeType && (!event.button || event.type !== "click") ) {
+            
+            /*
+            cur 从事件源（最深的节点开始），找父亲节点，直到 this 的子节点结束。
 
+            jQuery.event.dispatch 是这样调用该方法的：
+            jQuery.event.handlers.call( this, event, handlers )
+
+            所以，下面的 this 就是 jQuery.event.add 中的 eventHandle.elem
+            */
 			for ( ; cur !== this; cur = cur.parentNode || this ) {
 
 				// Don't process clicks on disabled elements (#6911, #8165, #11382, #11764)
+                /*
+                不处理 disabled 元素的点击事件
+                相当于：
+                if (!(cur.disabled === true && event.type === "click")) {
+                    // process
+                }
+                */
 				if ( cur.disabled !== true || event.type !== "click" ) {
 					matches = [];
+                    /*
+                    依次取出属于委托（i从0到delegateCount-1）的每个 handleObj，
+                    与 cur 比较，看是否是委托绑定到 cur 的，是的话把该 handleObj 压入 matches
+                    */
 					for ( i = 0; i < delegateCount; i++ ) {
 						handleObj = handlers[ i ];
 
@@ -8531,10 +8668,19 @@ jQuery.event = {
 		}
 
 		// Add the remaining (directly-bound) handlers
+        // 剩余的非委托的也加入到 handlerQueue 数组
 		if ( delegateCount < handlers.length ) {
 			handlerQueue.push({ elem: this, handlers: handlers.slice( delegateCount ) });
 		}
-
+        
+        /*
+        jQuery.event.handlers 作用：
+        就是提取一个数组，数组元素形式是：
+        { 
+            elem: 节点, 
+            handlers: [handleObj,handleObj...]
+         }
+        */
 		return handlerQueue;
 	},
 
@@ -8582,23 +8728,49 @@ jQuery.event = {
 		}
 	},
 
+    // 修正 event 对象
 	fix: function( event ) {
 		if ( event[ jQuery.expando ] ) {
 			return event;
 		}
+
+        /*
+        dispatch 方法是这么调用的：
+        event = jQuery.event.fix( event );
+
+        所以，这里的 this 都是指 jQuery.event
+        */
 
 		// Create a writable copy of the event object and normalize some properties
 		var i, prop, copy,
 			type = event.type,
 			originalEvent = event,
 			fixHook = this.fixHooks[ type ];
+        /*
+        fixHooks: {}
+        最开始 fixHook 肯定是 undefined
 
+        ① mouseHooks: {
+            props: "button buttons clientX clientY offsetX offsetY pageX pageY screenX screenY toElement".split(" "),
+            filter: function( event, original ) {}
+        }
+
+        ② keyHooks: {
+            props: "char charCode key keyCode".split(" "),
+            filter: function( event, original ) {}
+        }
+
+        ③ rkeyEvent = /^key/;
+           rmouseEvent = /^(?:mouse|contextmenu)|click/
+        */
 		if ( !fixHook ) {
 			this.fixHooks[ type ] = fixHook =
 				rmouseEvent.test( type ) ? this.mouseHooks :
 				rkeyEvent.test( type ) ? this.keyHooks :
 				{};
 		}
+        // fixHook 为 keyHooks 、mouseHooks 、{} 三者之一
+
 		copy = fixHook.props ? this.props.concat( fixHook.props ) : this.props;
 
 		event = new jQuery.Event( originalEvent );
@@ -8623,6 +8795,49 @@ jQuery.event = {
 
 		return fixHook.filter? fixHook.filter( event, originalEvent ) : event;
 	},
+    
+    /*
+    special 这个对象信息有点分散，在 chrome 下打印 $.event.special ，得到：
+    special : {
+        beforeunload : {
+            postDispatch : function ( event ){}
+        },
+        blur : {
+            delegateType : "focusout",
+            trigger : function (){}
+        },
+        click : {
+            trigger : function(){},
+            _default : function(event){}
+        },
+        focus : {
+            delegateType : "focusin",
+            trigger : function(){}
+        },
+        focusin : {
+            setup : fucntion(){},
+            teardown : function(){}
+        },
+        focusout : {
+            setup : fucntion(){},
+            teardown : function(){}
+        },
+        load : {
+            noBubble : true
+        },
+        mouseenter : {
+            bindType : "mouseover",           
+            delegateType : "mouseover",
+            handle : function(){}
+        },
+        mouseleave : {
+            bindType : "mouseout",           
+            delegateType : "mouseout",
+            handle : function(){}
+        }
+    }
+
+    */
 
 	special: {
 		load: {
@@ -8823,34 +9038,68 @@ if ( !jQuery.support.focusinBubbles ) {
 	});
 }
 
+/*
+（1） .on( events [, selector ] [, data ], handler )
+events：字符串，一个或多个空格隔开的事件类型"click"，可选的命名空间"keydown.myPlugin"
+selector：字符串，过滤所选元素的触发事件的子元素。如果为空或省略，则到达所选元素时，始终触发该事件
+data：任意类型，事件触发时，传给 handler
+handler：函数，事件的回调函数。如果是 false 表示一个返回 false 的函数
+
+（2） .on( events [, selector ] [, data ] )
+events：json 对象，字符串的 key 表示一个或多个空格隔开的事件类型"click"，可选的命名空间"keydown.myPlugin"；value 表示事件回调函数
+selector：字符串，过滤所选元素的触发事件的子元素。如果为空或省略，则到达所选元素时，始终触发该事件
+data：任意类型，事件触发时，传给 handler
+
+
+*/
 jQuery.fn.extend({
 
 	on: function( types, selector, data, fn, /*INTERNAL*/ one ) {
 		var origFn, type;
 
 		// Types can be a map of types/handlers
+        /*
+        ① types 是一个 json 对象，selector, data 都是可选
+        types = {
+            type1 : handler1,
+            type2 : handler2,
+            ...
+        }
+        */
 		if ( typeof types === "object" ) {
 			// ( types-Object, selector, data )
+            /*
+            如果 selector 不是字符串
+            ① data 没有值就把 selector 的值赋给它
+            ② selector 置为 undefined
+            */
 			if ( typeof selector !== "string" ) {
-				// ( types-Object, data )
+				// 相当于 ( types-Object, data ) 这种形式参数
 				data = data || selector;
 				selector = undefined;
 			}
+            // 递归
+            // 都转成这种形式 .on( events [, selector ] [, data ], handler )
 			for ( type in types ) {
 				this.on( type, selector, data, types[ type ], one );
 			}
+            // 链式调用，返回当前对象
 			return this;
 		}
-
+        
+        // 以上兼容各种参数形式，不要的参数就置为 undefined
+        // 2 个参数的情况 .on("click", fn)
 		if ( data == null && fn == null ) {
 			// ( types, fn )
 			fn = selector;
 			data = selector = undefined;
 		} else if ( fn == null ) {
+            // 3 个参数的情况 .on("click", "tr", fn)
 			if ( typeof selector === "string" ) {
 				// ( types, selector, fn )
 				fn = data;
 				data = undefined;
+            // 3 个参数的情况 .on("click", { foo: "bar" }, fn)
 			} else {
 				// ( types, data, fn )
 				fn = data;
@@ -8858,14 +9107,21 @@ jQuery.fn.extend({
 				selector = undefined;
 			}
 		}
+        // 如果 fn 是 false，那 fn 就是一个返回 false 的函数
 		if ( fn === false ) {
 			fn = returnFalse;
+        // 其他情况下，如果 fn 为假，那就直接返回
 		} else if ( !fn ) {
 			return this;
 		}
 
+        /*
+        这个 one 参数专门为下面的 .one 方法服务的
+        有了这个参数，表示对于某个元素的某一类事件，回调方法最多执行一次
+        */
 		if ( one === 1 ) {
 			origFn = fn;
+            // 执行一次就移除掉
 			fn = function( event ) {
 				// Can use an empty set, since event contains the info
 				jQuery().off( event );
@@ -8875,6 +9131,7 @@ jQuery.fn.extend({
 			fn.guid = origFn.guid || ( origFn.guid = jQuery.guid++ );
 		}
 		return this.each( function() {
+            // 添加监听
 			jQuery.event.add( this, types, fn, data, selector );
 		});
 	},
@@ -8925,6 +9182,36 @@ jQuery.fn.extend({
 		}
 	}
 });
+
+/*
+下文有：
+jQuery.fn.extend({
+	hover: function( fnOver, fnOut ) {
+		return this.mouseenter( fnOver ).mouseleave( fnOut || fnOver );
+	},
+
+	bind: function( types, data, fn ) {
+		return this.on( types, null, data, fn );
+	},
+	unbind: function( types, fn ) {
+		return this.off( types, null, fn );
+	},
+
+	delegate: function( selector, types, data, fn ) {
+		return this.on( types, selector, data, fn );
+	},
+	undelegate: function( selector, types, fn ) {
+		// ( namespace ) or ( selector, types [, fn] )
+		return arguments.length === 1 ? this.off( selector, "**" ) : this.off( types, selector || "**", fn );
+	}
+});
+*/
+
+
+
+
+
+
 var isSimple = /^.[^:#\[\.,]*$/,
 	rparentsprev = /^(?:parents|prev(?:Until|All))/,
 	rneedsContext = jQuery.expr.match.needsContext,
