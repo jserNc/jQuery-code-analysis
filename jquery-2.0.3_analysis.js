@@ -7962,7 +7962,7 @@ $('#div1').on('click',function(){
 $('#div2').on('click',function(){
     console.log('div2')
 });
-$('#div2').on('click','p',function(e){
+$('#div2').on('click','p,a',function(e){
     console.log(e.currentTarget.nodeName)
 });
 $('#p1').on('click',function(){
@@ -8435,54 +8435,123 @@ jQuery.event = {
 			data_priv.remove( elem, "events" );
 		}
 	},
+    /*
+    ① 1 个事件名参数
+    $('input').trigger('click');
 
+    ② 2 个参数，第 2 个参数类似于 event.data 属性，作为回调函数的参数
+    $('input').click(function (e, data) {
+        alert(data);
+    }).trigger('click', 123);
+
+    ③ 2 个参数，第 2 个参数为数组
+    $('input').click(function (e, data1, data2) {
+        alert(data1 + ',' + data2);
+    }).trigger('click', ['abc', '123']);
+    */
+    /*
+    jQuery.event.trigger 被调用
+    ① jQuery.fn.trigger 
+       jQuery.event.trigger( type, data, this )
+    ② jQuery.fn.triggerHandler
+       jQuery.event.trigger( type, data, elem, true )
+       可以看到，onlyHandlers 参数在 triggerHandler 调用时为 true
+   
+   总结：
+   trigger 执行事件hanlder/执行冒泡/执行默认行为
+   triggerHandler 执行事件handler/不冒泡/不执行默认行为
+
+   （onlyHandlers 为 true 就表示仅执行事件handler）
+    */
 	trigger: function( event, data, elem, onlyHandlers ) {
 
 		var i, cur, tmp, bubbleType, ontype, handle, special,
 			eventPath = [ elem || document ],
+            /*
+            event 除了可以是 "click" 这种，还可以事件？
+            core_hasOwn = {}.hasOwnProperty
+            */
 			type = core_hasOwn.call( event, "type" ) ? event.type : event,
 			namespaces = core_hasOwn.call( event, "namespace" ) ? event.namespace.split(".") : [];
 
 		cur = tmp = elem = elem || document;
 
 		// Don't do events on text and comment nodes
+        // 文本和注释节点，不处理
 		if ( elem.nodeType === 3 || elem.nodeType === 8 ) {
 			return;
 		}
 
 		// focus/blur morphs to focusin/out; ensure we're not firing them right now
-		if ( rfocusMorph.test( type + jQuery.event.triggered ) ) {
+		/*
+        rfocusMorph = /^(?:focusinfocus|focusoutblur)$/
+        focusinfocus/focusoutblur 这种就返回
+
+        focus/blur 事件变种成 focusin/out 进行处理
+        如果浏览器原生支持 focusin/out，则确保当前不触发他们
+        */
+        if ( rfocusMorph.test( type + jQuery.event.triggered ) ) {
 			return;
 		}
 
+        // 带命名空间的事件类型
 		if ( type.indexOf(".") >= 0 ) {
 			// Namespaced trigger; create a regexp to match event type in handle()
 			namespaces = type.split(".");
 			type = namespaces.shift();
 			namespaces.sort();
 		}
+
+        // 'click' -> 'onclick'
 		ontype = type.indexOf(":") < 0 && "on" + type;
 
 		// Caller can pass in a jQuery.Event object, Object, or just an event type string
-		event = event[ jQuery.expando ] ?
+		/*
+        ① 如果参数 event 是对象，把它修正为 jQuery.Event 的实例对象
+        ② 如果是 'click' 这种字符串，那就不管了
+        */
+        event = event[ jQuery.expando ] ?
 			event :
 			new jQuery.Event( type, typeof event === "object" && event );
 
 		// Trigger bitmask: & 1 for native handlers; & 2 for jQuery (always true)
-		event.isTrigger = onlyHandlers ? 2 : 3;
+		// jQuery.fn.trigger 对应 3 ；jQuery.fn.triggerHandler 对应 2
+        event.isTrigger = onlyHandlers ? 2 : 3;
 		event.namespace = namespaces.join(".");
 		event.namespace_re = event.namespace ?
 			new RegExp( "(^|\\.)" + namespaces.join("\\.(?:.*\\.|)") + "(\\.|$)" ) :
 			null;
 
+        /*
+        ① 没有命名空间 event.namespace 为假，event.namespace_re 为 null
+        ② 有命名空间:
+           假如 event.namespace = "aa.bb"
+           event.namespace_re = /(^|\.)aa\.(?:.*\.|)bb(\.|$)/
+        */
+
 		// Clean up the event in case it is being reused
 		event.result = undefined;
+        /*
+        如果 event 本身就是字符串 'click'
+        'click'.target -> undefined
+        
+        目标就是 elem
+        */
 		if ( !event.target ) {
 			event.target = elem;
 		}
 
 		// Clone any incoming data and prepend the event, creating the handler arg list
-		data = data == null ?
+		/*
+        jQuery.makeArray( ['abc', '123'], [ 'event' ] )
+        -> ["event", "abc", "123"]
+        
+        对应这种调用形式：
+        $('input').click(function (e, data1, data2) {
+            alert(data1 + ',' + data2);
+        }).trigger('click', ['abc', '123']);
+        */
+        data = data == null ?
 			[ event ] :
 			jQuery.makeArray( data, [ event ] );
 
@@ -8495,38 +8564,64 @@ jQuery.event = {
 		// Determine event propagation path in advance, per W3C events spec (#9951)
 		// Bubble up to document, then to window; watch for a global ownerDocument var (#9724)
 		if ( !onlyHandlers && !special.noBubble && !jQuery.isWindow( elem ) ) {
-
+            /*
+            eg:
+            type = 'focus';
+            bubbleType = 'focusin';
+            
+            bubbleType + type -> 'focusinfocus'
+            rfocusMorph.test('focusinfocus') -> true
+            */
 			bubbleType = special.delegateType || type;
 			if ( !rfocusMorph.test( bubbleType + type ) ) {
 				cur = cur.parentNode;
 			}
+            // 遍历所有祖先节点
 			for ( ; cur; cur = cur.parentNode ) {
 				eventPath.push( cur );
 				tmp = cur;
 			}
 
 			// Only add window if we got to document (e.g., not plain obj or detached DOM)
-			if ( tmp === (elem.ownerDocument || document) ) {
+			/*
+            document.defaultView === window
+            如果最后遍历到了 document 节点，那就把 window 也加进去
+            */
+            if ( tmp === (elem.ownerDocument || document) ) {
 				eventPath.push( tmp.defaultView || tmp.parentWindow || window );
 			}
 		}
 
 		// Fire handlers on the event path
 		i = 0;
+        // 遍历 eventPath 数组，触发事件
 		while ( (cur = eventPath[i++]) && !event.isPropagationStopped() ) {
-
+            /*
+            ① i 为 1 (0++) 时，是最深层节点，自身事件
+            ② i > 1，就是祖先元素了，冒泡事件
+            */
 			event.type = i > 1 ?
 				bubbleType :
 				special.bindType || type;
 
 			// jQuery handler
+            /*
+            ① 如果 type 对应的 handlers 数组存在，返回返回 handle 这个分发事件函数
+            ② 否则，返回 undefined
+            */
 			handle = ( data_priv.get( cur, "events" ) || {} )[ event.type ] && data_priv.get( cur, "handle" );
 			if ( handle ) {
+                // 触发 dispatch 
 				handle.apply( cur, data );
 			}
 
 			// Native handler
+            // handle = elem.onclick，触发 handle
 			handle = ontype && cur[ ontype ];
+            /*
+            handle.apply( cur, data ) === false 
+            意味着：不管返回值是不是 false，都会执行这个方法
+            */
 			if ( handle && jQuery.acceptData( cur ) && handle.apply && handle.apply( cur, data ) === false ) {
 				event.preventDefault();
 			}
@@ -8534,6 +8629,12 @@ jQuery.event = {
 		event.type = type;
 
 		// If nobody prevented the default action, do it now
+        /*
+        这一段表示浏览器默认行为的触发，比如:
+        form.submit()，button.click() 等
+        eg:
+        document 元素没有 click 方法，但是 button 元素有 click 方法
+        */
 		if ( !onlyHandlers && !event.isDefaultPrevented() ) {
 
 			if ( (!special._default || special._default.apply( eventPath.pop(), data ) === false) &&
@@ -8544,6 +8645,9 @@ jQuery.event = {
 				if ( ontype && jQuery.isFunction( elem[ type ] ) && !jQuery.isWindow( elem ) ) {
 
 					// Don't re-trigger an onFOO event when we call its FOO() method
+                    /*
+                    触发 FOO() 方法时，不要重复触发 onFOO 事件（上边已经触发过了）
+                    */
 					tmp = elem[ ontype ];
 
 					if ( tmp ) {
@@ -8552,7 +8656,7 @@ jQuery.event = {
 
 					// Prevent re-triggering of the same event, since we already bubbled it above
 					jQuery.event.triggered = type;
-					elem[ type ]();
+					elem[ type ](); // 事件执行
 					jQuery.event.triggered = undefined;
 
 					if ( tmp ) {
@@ -8568,6 +8672,7 @@ jQuery.event = {
 	dispatch: function( event ) {
 
 		// Make a writable jQuery.Event from the native event object
+        // 从元素事件对象，得到一个可写的修正后的事件对象
 		event = jQuery.event.fix( event );
 
 		var i, j, ret, matched, handleObj,
@@ -8606,20 +8711,31 @@ jQuery.event = {
 
 		// Run delegates first; they may want to stop propagation beneath us
 		i = 0;
+        // 不同层级的元素，受 isPropagationStopped 影响
 		while ( (matched = handlerQueue[ i++ ]) && !event.isPropagationStopped() ) {
 			event.currentTarget = matched.elem;
 
 			j = 0;
+            // 同一个元素，不同的事件，受 isImmediatePropagationStopped 影响
 			while ( (handleObj = matched.handlers[ j++ ]) && !event.isImmediatePropagationStopped() ) {
 
 				// Triggered event must either 1) have no namespace, or
 				// 2) have namespace(s) a subset or equal to those in the bound event (both can have no namespace).
                 /*
-                event没有空间名或者handleObj的空间名符合event的空间名的才能进入下一步
+                ① 没有命名空间 event.namespace 为假，event.namespace_re 为 null
+                ② 有命名空间:
+                   假如 event.namespace = "aa.bb"
+                   event.namespace_re = /(^|\.)aa\.(?:.*\.|)bb(\.|$)/
                 */
 				if ( !event.namespace_re || event.namespace_re.test( handleObj.namespace ) ) {
 
 					event.handleObj = handleObj;
+                    /*
+                    $('.button').on('click',{user:'nanc'},function(e){
+                        alert(e.data.user);
+                     });
+                     就是在这里给 event.data 赋值的
+                    */
 					event.data = handleObj.data;
                     
                     /* 
@@ -8631,6 +8747,7 @@ jQuery.event = {
 							.apply( matched.elem, args );
 
 					if ( ret !== undefined ) {
+                        // 如果某个回调队列中的某个函数执行返回 false，那就阻止默认行为，并阻止冒泡
 						if ( (event.result = ret) === false ) {
 							event.preventDefault();
 							event.stopPropagation();
@@ -8670,16 +8787,27 @@ jQuery.event = {
         /*
         !event.button || event.type !== "click"
         是为了防止火狐非左键点击的冒泡
+
+        （1）如果没有委托，即 delegateCount = 0，不会走下面的 if 块
+        （2）如果有委托，取出绑定事件节点上的handlers，可以看出此时元素本身有事件，元素还要处理委托事件。
+             jQuery规定事件执行顺序：
+             ① 依赖委托节点在DOM树的深度安排优先级，委托的DOM节点层次越深，其执行优先级越高。
+             ② 委托的事件处理程序相对于直接绑定的事件处理程序在队列的更前面。
         */
 		if ( delegateCount && cur.nodeType && (!event.button || event.type !== "click") ) {
             
             /*
-            cur 从事件源（最深的节点开始），找父亲节点，直到 this 的子节点结束。
+            cur = event.target 从事件源（最深的节点开始），找父亲节点，直到 this 的子节点结束。
+            越深的节点，优先级越高！
 
             jQuery.event.dispatch 是这样调用该方法的：
             jQuery.event.handlers.call( this, event, handlers )
 
             所以，下面的 this 就是 jQuery.event.add 中的 eventHandle.elem
+
+            注意！！！
+            ① 这里是从最深的节点开始找的，层次上溯
+            ② 如果 cur 就是 this，根本就不会进入下面的 for 循环，直接把绑定自身的事件加入队列就好了
             */
 			for ( ; cur !== this; cur = cur.parentNode || this ) {
 
@@ -8695,7 +8823,29 @@ jQuery.event = {
 					matches = [];
                     /*
                     依次取出属于委托（i从0到delegateCount-1）的每个 handleObj，
-                    与 cur 比较，看是否是委托绑定到 cur 的，是的话把该 handleObj 压入 matches
+                    首先明确一点，我们不会执行所有的 handleObj，也就是说会丢掉一些
+                    那丢掉哪一些呢？或者说保留哪一些呢？
+
+                    还是看上面的例子：
+                    点击 p 标签后，打印内容以及顺序如下：
+                    p1 -> P -> div2 -> div1
+                    
+                    p 标签和 a 标签都委托在 div2 上，可是，
+                    点击 p 标签，并不会触发 a 标签的回调
+
+                    所以在 div2 的 handlers 里，只取出和 p 标签对应的 handleObj
+
+                    换个角度讲：
+                    div2 是父元素，p 又是 a 的父元素。子元素 p,a 点击事件委托给 div2
+                    $('#div2').on('click','p,a',fn);
+                    
+                    div2 的点击事件有一个 handlers 数组，前一部分的 handleObj 是委托的。
+                    假设 'p,a' 这个 selector 对应 handleObj[n]。
+                    这里的 fn 既与 p 标签对应，也和 a 标签对应。
+                    那么，点击 p 标签，冒泡到 #div2 后，就只该出发 p 标签的回调 fn，而不该触发 a 标签的 fn。
+                    在 #div2 中找 'p,a'，找到了一组元素，我们以数组表示： [p,a]。
+                    而我们点击的是 p（event.target），从 p 开始回溯，p 在数组 [p,a] 中，所以，p 的回调就是应该执行的。
+                    而 a 是 p 的子元素，按照事件冒泡属性，是不会把 a 的回调取出来的。
                     */
 					for ( i = 0; i < delegateCount; i++ ) {
 						handleObj = handlers[ i ];
@@ -8704,6 +8854,11 @@ jQuery.event = {
 						sel = handleObj.selector + " ";
 
 						if ( matches[ sel ] === undefined ) {
+                            /*
+                            A: 如果在节点 this (eventHandle.elem) 中找到了选择器 sel 代表的一组元素，
+                            B: cur 在这一组元素中
+                            A && B -> matches[ sel ] 就为真，下面就会把这个 handleObj 加入处理列表
+                            */
 							matches[ sel ] = handleObj.needsContext ?
 								jQuery( sel, this ).index( cur ) >= 0 :
 								jQuery.find( sel, this, null, [ cur ] ).length;
@@ -8785,7 +8940,8 @@ jQuery.event = {
 
             /*
             ① pageX/pageY
-               获取相对于页面原点的水平/垂直坐标
+               获取相对于页面（body）原点的水平/垂直坐标
+               （如果 body 有边框，还得把边框排除在外）
             ② screenX/screenY (非 jQuery 封装)
                获取显示器屏幕位置的水平/垂直坐标
             ③ clientX/clientY (非 jQuery 封装)
@@ -8806,6 +8962,13 @@ jQuery.event = {
 
 			// Add which for click: 1 === left; 2 === middle; 3 === right
 			// Note: button is not normalized, so don't use it
+            /*
+            event.which
+            ① 鼠标事件，左中右键分别返回 1,2,3
+            ② 键盘事件，返回对应的键码或字符编码
+
+            一般，事件对象 event 没有 button 属性吧
+            */
 			if ( !event.which && button !== undefined ) {
 				event.which = ( button & 1 ? 1 : ( button & 2 ? 3 : ( button & 4 ? 2 : 0 ) ) );
 			}
@@ -8814,8 +8977,13 @@ jQuery.event = {
 		}
 	},
 
-    // 修正 event 对象
+    /*
+    jQuery.event.fix将原生的事件对象 event 修正为一个新的可写 event 对象，
+    并对该 event 的属性以及方法统一接口；
+    它内部调用了 jQuery.Event(event) 构造函数。
+    */
 	fix: function( event ) {
+        // 已经修正过了，那就返回吧
 		if ( event[ jQuery.expando ] ) {
 			return event;
 		}
@@ -8830,6 +8998,7 @@ jQuery.event = {
 		// Create a writable copy of the event object and normalize some properties
 		var i, prop, copy,
 			type = event.type,
+            // 复制一个 event 副本，并规范化一些属性
 			originalEvent = event,
 			fixHook = this.fixHooks[ type ];
         /*
@@ -8846,22 +9015,38 @@ jQuery.event = {
             filter: function( event, original ) {}
         }
 
-        ③ rkeyEvent = /^key/;
-           rmouseEvent = /^(?:mouse|contextmenu)|click/
+        ③ 键盘/鼠标事件
+        rkeyEvent = /^key/;
+        rmouseEvent = /^(?:mouse|contextmenu)|click/
         */
 		if ( !fixHook ) {
 			this.fixHooks[ type ] = fixHook =
+                // 鼠标事件
 				rmouseEvent.test( type ) ? this.mouseHooks :
+                // 键盘事件
 				rkeyEvent.test( type ) ? this.keyHooks :
 				{};
 		}
         // fixHook 为 keyHooks 、mouseHooks 、{} 三者之一
 
+        /*
+        jQuery.event.props : 键盘鼠标事件的【共享属性】
+        jQuery.event.keyHooks.props : 键盘事件的【独有属性】
+        jQuery.event.mouseHooks.props : 鼠标事件的【独有属性】
+
+        这里是把【共享属性】和【独有属性】拼接在一起
+        */
 		copy = fixHook.props ? this.props.concat( fixHook.props ) : this.props;
 
+        /*
+        根据原生 event 对象，创建 jQuery.Event 实例对象
+        jQuery.Event 构造函数中有一句：event.originalEvent = originalEvent;
+        所以，新的 event 对象，可以通过 originalEvent 属性获取原来 event 事件对象的一些属性
+        */
 		event = new jQuery.Event( originalEvent );
 
 		i = copy.length;
+        // 复制所有的 props 属性
 		while ( i-- ) {
 			prop = copy[ i ];
 			event[ prop ] = originalEvent[ prop ];
@@ -8869,16 +9054,19 @@ jQuery.event = {
 
 		// Support: Cordova 2.5 (WebKit) (#13255)
 		// All events should have a target; Cordova deviceready doesn't
+        // 如果没有 event.target，修正为 document
 		if ( !event.target ) {
 			event.target = document;
 		}
 
 		// Support: Safari 6.0+, Chrome < 28
 		// Target should not be a text node (#504, #13143)
+        // 如果 event.target 是文本节点，修正为其父节点
 		if ( event.target.nodeType === 3 ) {
 			event.target = event.target.parentNode;
 		}
 
+        // 最后，用钩子修正事件对象
 		return fixHook.filter? fixHook.filter( event, originalEvent ) : event;
 	},
     
@@ -9113,6 +9301,25 @@ jQuery.Event.prototype = {
 
 // Create mouseenter/leave events using mouseover/out and event-time checks
 // Support: Chrome 15+
+/*
+区别：
+① mouseenter() 和 mouseleave() 穿过子元素不会触发，
+② mouseover() 和 mouseout() 则会触发。
+
+jQuery.each({
+	mouseenter: "mouseover",
+	mouseleave: "mouseout"
+}, function( orig, fix ) {
+    console.log('orig:',orig,'fix:',fix)
+});
+打印结果：
+orig: mouseenter fix: mouseover
+orig: mouseleave fix: mouseout
+
+所以，这里新建了两个对象：
+jQuery.event.special[ "mouseenter" ] 和
+jQuery.event.special[ "mouseleave" ]
+*/
 jQuery.each({
 	mouseenter: "mouseover",
 	mouseleave: "mouseout"
@@ -11025,6 +11232,11 @@ jQuery.each( ("blur focus focusin focusout load resize scroll unload click dblcl
     ② 如果参数为空，触发事件
     $('.button').click()
     -> $('.button').trigger( 'click' );
+
+    也就是说：
+    $("#btn").trigger("click");
+    可以简写为：
+    $("#btn").click();
     */
 	jQuery.fn[ name ] = function( data, fn ) {
 		return arguments.length > 0 ?
