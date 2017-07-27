@@ -8083,6 +8083,32 @@ jQuery.event = {
 				// when an event is called after a page has unloaded
                 /*
                 core_strundefined : "undefined"
+
+                jQuery.event.triggered !== e.type 比较特殊
+
+                在 trigger 方法执行元素的默认方法时，有三句：
+                jQuery.event.triggered = type;
+                elem[ type ](); // 这里的 type 就是指 submit，click 等元素默认事件方法
+                jQuery.event.triggered = undefined;
+
+                比如一些特殊元素有自己的默认方法，比如:
+                form.submit()，button.click() 等
+                
+                按照 jQuery 事件处理流程，对于 click() 方法
+                有参数时会触发 on 方法
+                没有参数时会触发 trigger 方法
+
+                而  trigger 方法又会遍历【该元素及其祖先元素】，
+                然后依次在【该元素及其祖先元素】上调用 handle.apply( cur, data ) 
+                而 handle 会调用 dispatch ，然后执行回调函数
+
+                那么问题就来了，刚才执行默认事件之前已经把以上的冒泡过程执行了一遍
+
+                所以，这次就不应该再执行了
+                也就是当 jQuery.event.triggered === e.type 时，就不能再执行 dispatch 了
+
+                等 click() 执行完了，又会重新赋值 jQuery.event.triggered = undefined 
+                后面又可以用 handle 来调用 dispatch 了
                 */
 				return typeof jQuery !== core_strundefined && (!e || jQuery.event.triggered !== e.type) ?
 					jQuery.event.dispatch.apply( eventHandle.elem, arguments ) :
@@ -8192,6 +8218,11 @@ jQuery.event = {
 			}, handleObjIn );
             /*
             jQuery.expr.match.needsContext = /^[\x20\t\r\n\f]*[>+~]|:(even|odd|eq|gt|lt|nth|first|last)(?:\([\x20\t\r\n\f]*((?:-\d)?\d*)[\x20\t\r\n\f]*\)|)(?=[^-]|$)/i
+            handleObj.needsContext 表示：
+            selector 存在并且有关系选择器或者伪类时值为 true
+
+            这个 handleObj.needsContext 会决定在 jQuery.event.handlers 方法中
+            是用 jQuery() 还是 jQuery.find() 方法来根据 selector 找当前元素（this）的子元素
             */
 
 			// Init the event handler queue if we're the first
@@ -8218,15 +8249,13 @@ jQuery.event = {
 
 				// Only use addEventListener if the special events handler returns false
                 /*
-                如果没有special.setup函数或者special.setup函数执行后返回false，则直接用addEventListener绑定事件。
+                ① 如果没有special.setup函数或者special.setup函数执行后返回false，则直接用addEventListener绑定事件。
                 
-                ① 首先尝试用special.setup来绑定，没有或返回false则回退到addEventListener。
-                ② 几乎所有的事件类型（type）都是用addEventListener来绑定的。
-                因为special中仅 special.focusin special.focusout 有setup，
-                special.focus和special.blur有机会变成前两个，
-                因此所有的非addEventListener注册只可能这4种事件。
-
-                addEventListener注册的是什么？
+                special.setup 中会调用
+                document.addEventListener( orig, handler, true )
+                注意第三个参数是 true，表示捕获事件，主要针对 focus/blur 等不支持冒泡的事件
+                
+                ② addEventListener注册的是什么？
                 是eventHandle（eventHandle = elemData.handle），
                 这是唯一注册在元素上的事件处理函数！
                 它的作用就是执行dispatch，从而执行真正的事件处理函数（队列）！
@@ -8360,6 +8389,19 @@ jQuery.event = {
 
         "click mouseover".match(/\S+/g) ->  ["click", "mouseover"]
         */
+        /*
+        types = ( types || "" ).match( core_rnotwhite ) || [""]
+        这句得注意一下：
+        
+        ① 先看 ( types || "" ).match( core_rnotwhite )
+        如果 types 为 undefined，false，null等，就会是：
+        "".match( core_rnotwhite ) -> null
+        
+        另外，如果 types 只是空格，换行，回车，换页等空白符，也返回 null 
+
+        ② 当 ① 返回 null，则 types = [""]
+        下面的注释很详细解释 types = [""] 会意味着什么
+        */
 		types = ( types || "" ).match( core_rnotwhite ) || [""];
 		t = types.length;
 		while ( t-- ) {
@@ -8374,12 +8416,68 @@ jQuery.event = {
 			namespaces = ( tmp[2] || "" ).split( "." ).sort();
 
 			// Unbind all events (on this namespace, if provided) for the element
-			if ( !type ) {
+			// 没有传入特定 type，那就移除所有 type
+            if ( !type ) {
 				for ( type in events ) {
+                    // mappedTypes 为 true 表示任意类型都可以删
 					jQuery.event.remove( elem, type + types[ t ], handler, selector, true );
 				}
 				continue;
 			}
+            /*
+            这里递归调用 jQuery.event.remove 方法，
+            为什么第二个参数会是 type + types[ t ] 呢？
+
+            ① 要想执行这个回调，就得 type 为假
+            ② type = rtypenamespace.exec( types[t] )[1]
+            ③ 经验证，不管 types[t] 是什么值，type 始终为字符串
+               rtypenamespace.exec(undefined)
+               -> ["undefined", "undefined", undefined, index: 0, input: "undefined"]
+               rtypenamespace.exec({})
+               -> ["[object Object]", "[object Object]", undefined, index: 0, input: "[object Object]"]
+               rtypenamespace.exec([1,23])
+               -> ["1,23", "1,23", undefined, index: 0, input: "1,23"]
+               rtypenamespace.exec('..h.d,lf...s@#$%ie')
+               -> ["..h.d,lf...s@#$%ie", "", ".h.d,lf...s@#$%ie", index: 0, input: "..h.d,lf...s@#$%ie"]
+            ④ 要想 type 为假，那么只有 types[t] 为空字符串 ''
+               rtypenamespace.exec('')
+               -> ["", "", undefined, index: 0, input: ""]
+            ⑤ eg:
+            var events = {
+                'click' : { a:1},
+                'mouseover' : { b:2}, 
+                'scroll' : { c:3}
+            };
+
+            var types = [""]
+            var t = types.length,
+                tmp,
+                rtypenamespace = /^([^.]*)(?:\.(.+)|)$/;
+
+            while(t--){
+                tmp = rtypenamespace.exec( types[t] ) || [];  
+                type = tmp[1]; 
+
+                if ( !type ) {
+                    for ( type in events ) {
+                        console.log('type:',type);
+                        console.log('types[ t ]:',types[ t ]);
+                    }
+                    continue;  
+                }
+            }
+
+            打印结果如下：
+            type: click
+            types[ t ]: 
+            type: mouseover
+            types[ t ]: 
+            type: scroll
+            types[ t ]: 
+
+            ⑥ type + types[ t ] 相当于 type + ''
+            所以，作用是将 type 转为字符串么
+            */
 
 			special = jQuery.event.special[ type ] || {};
 			type = ( selector ? special.delegateType : special.bindType ) || type;
@@ -8402,16 +8500,24 @@ jQuery.event = {
 			origCount = j = handlers.length;
 			while ( j-- ) {
 				handleObj = handlers[ j ];
-
+                
+                // 前边递归调用 remove 方法时 mappedTypes 为 true
+                // 也就是任意类型都可以删，不需要再单独考虑类型是否匹配了
 				if ( ( mappedTypes || origType === handleObj.origType ) &&
+                    // 没有传入回调函数，或者回调函数的 guid 要匹配上
 					( !handler || handler.guid === handleObj.guid ) &&
+                    // 没有命名空间（也就没有tmp[2]）或命名空间匹配上
 					( !tmp || tmp.test( handleObj.namespace ) ) &&
+                    // && 优先级高于 ||，没有选择器，或者选择器匹配上，或者通配
 					( !selector || selector === handleObj.selector || selector === "**" && handleObj.selector ) ) {
-					handlers.splice( j, 1 );
-
+					// 从 handlers 数组里删除对应的 handleObj
+                    handlers.splice( j, 1 );
+                    
+                    // 如果是委托事件被删除了，还有把委托事件计数器减 1
 					if ( handleObj.selector ) {
 						handlers.delegateCount--;
 					}
+                    // 特殊事件删除
 					if ( special.remove ) {
 						special.remove.call( elem, handleObj );
 					}
@@ -8420,7 +8526,12 @@ jQuery.event = {
 
 			// Remove generic event handler if we removed something and no more handlers exist
 			// (avoids potential for endless recursion during removal of special event handlers)
-			if ( origCount && !handlers.length ) {
+			/*
+            ① 如果原来确实有事件绑定，然后这次全清空了，那就解除该类型事件监听
+            也就是说，如果原来没有时间绑定 origCount === 0，那就根本没绑定，更谈不上解除监听
+            ② 删除 events 的 type 属性
+            */
+            if ( origCount && !handlers.length ) {
 				if ( !special.teardown || special.teardown.call( elem, namespaces, elemData.handle ) === false ) {
 					jQuery.removeEvent( elem, type, elemData.handle );
 				}
@@ -8430,6 +8541,9 @@ jQuery.event = {
 		}
 
 		// Remove the expando if it's no longer used
+        /*
+        如果 events 清空了，也就是各种类型事件监听都没有了，那就从缓存删除
+        */
 		if ( jQuery.isEmptyObject( events ) ) {
 			delete elemData.handle;
 			data_priv.remove( elem, "events" );
@@ -8634,6 +8748,10 @@ jQuery.event = {
         form.submit()，button.click() 等
         eg:
         document 元素没有 click 方法，但是 button 元素有 click 方法
+
+        var btn = document.getElementsByTagName('button')[0]
+        btn.click
+        // function click() { [native code] }
         */
 		if ( !onlyHandlers && !event.isDefaultPrevented() ) {
 
@@ -8655,7 +8773,11 @@ jQuery.event = {
 					}
 
 					// Prevent re-triggering of the same event, since we already bubbled it above
-					jQuery.event.triggered = type;
+					/*
+                    click() 带参数会触发 on 方法，不带参数会触发 trigger 方法
+                    防止 click() -> trigger() -> handle (jQuery.event.triggered !== e.type) -> dispatch
+                    */
+                    jQuery.event.triggered = type;
 					elem[ type ](); // 事件执行
 					jQuery.event.triggered = undefined;
 
@@ -8669,6 +8791,18 @@ jQuery.event = {
 		return event.result;
 	},
 
+    /*
+    jQuery.event.dispatch VS jQuery.event.trigger
+    ① dispatch 处理 elem 它自身的监听事件以及那些委托给 elem 的子元素的事件
+       它只会在自身和更深层的子元素上触发回调事件，不会向 elem 上层的祖先元素冒泡
+    ② trigger 不光处理 elem 这个元素上的委托事件和自身事件，还遍历祖先元素，
+       依次触发所有祖先元素上的委托事件和自身事件
+    
+    那一般情况下，如果通过 on 方法给多个元素绑定 type 类型事件，是怎么冒泡触发的呢？
+    那是因为，在 add 方法中，每个元素都会调用 elem.addEventListener( type, eventHandle, false )
+    事件冒泡过程中，会在每个元素上触发 eventHandle，也就是在每个元素上调用 dispatch 方法。
+    即：jQuery.event.dispatch.apply( eventHandle.elem, arguments )
+    */
 	dispatch: function( event ) {
 
 		// Make a writable jQuery.Event from the native event object
@@ -8707,6 +8841,7 @@ jQuery.event = {
             handlers: [handleObj,handleObj...]
          }
         */
+        // 通过 jQuery.event.handlers 方法得到一个实际会处理的回调队列
 		handlerQueue = jQuery.event.handlers.call( this, event, handlers );
 
 		// Run delegates first; they may want to stop propagation beneath us
@@ -8785,9 +8920,6 @@ jQuery.event = {
 		// Black-hole SVG <use> instance trees (#13180)
 		// Avoid non-left-click bubbling in Firefox (#3861)
         /*
-        !event.button || event.type !== "click"
-        是为了防止火狐非左键点击的冒泡
-
         （1）如果没有委托，即 delegateCount = 0，不会走下面的 if 块
         （2）如果有委托，取出绑定事件节点上的handlers，可以看出此时元素本身有事件，元素还要处理委托事件。
              jQuery规定事件执行顺序：
@@ -8795,7 +8927,22 @@ jQuery.event = {
              ② 委托的事件处理程序相对于直接绑定的事件处理程序在队列的更前面。
         */
 		if ( delegateCount && cur.nodeType && (!event.button || event.type !== "click") ) {
-            
+            /*
+            eg:
+            document.onclick = function(event){
+                console.log(event.button);
+                console.log('类型：',typeof event.button);
+            }
+            点击文档，打印 event.button，点击鼠标左键，结果如下：
+            // 0
+            // 类型： number
+
+            !event.button || event.type !== "click"
+            -> !(event.button && event.type === "click")
+            -> !(非左键点击)
+            -> 排除非左键点击
+            -> 要么 event.button 为 0，即左键操作；要么不是点击事件
+            */
             /*
             cur = event.target 从事件源（最深的节点开始），找父亲节点，直到 this 的子节点结束。
             越深的节点，优先级越高！
@@ -8858,6 +9005,33 @@ jQuery.event = {
                             A: 如果在节点 this (eventHandle.elem) 中找到了选择器 sel 代表的一组元素，
                             B: cur 在这一组元素中
                             A && B -> matches[ sel ] 就为真，下面就会把这个 handleObj 加入处理列表
+                            
+                            两层 for 循环：（这里的 this 指调用 on 方法的元素）
+                            第一层：cur 由 event.target -> this （cur 的父节点，到 this 结束）
+                                    意思是：可能多个元素都委托给了 this 元素
+                                    即元素 A 委托给了祖先元素，元素 B 也委托给了 this 元素...
+                                    要把这些 A，B ... 都找出来
+                                    
+                            第二层：遍历 handlers 中委托的 handleObj 
+                                    意思是：可能多次事件绑定（handleObj）都与元素 cur 有关
+                                    即多次给元素 A 绑定某个类型事件（每次的 selector 可以相同，也可以不同），
+                                    第一次 'div' 方式把 A 元素的事件委托给 this 元素；
+                                    第二次 '.clsA' 方式把 A 元素的事件委托给 this 元素；
+                                    第三次 '#a' 方式把 A 元素的事件委托给 this 元素；
+                                    第四次还是 'div' 方式把 A 元素的事件委托给 this 元素；
+                                    ...
+
+                            总结一下：
+                            $('#div1').on('click','p,a',fn1);
+                            $('#div1').on('click','.clsA',fn1);
+                            $('#div1').on('click','div',fn1);
+                            ...
+                            这里的  $('#div1') 就是上面说的 this。
+                            我们要做的就是把【委托在 this 上的 'p,a'、'.clsA'、'div' 这些元素】找出来，
+                            并把 handleObj 和这些元素对应起来。
+
+                            当然了，前提是，我们找到的必须以 event.target 开始向上层找。
+                            也就是说我们找的【委托在 this 上的 'p,a'、'.clsA'、'div' 这些元素】必须是 event.target 的祖先元素
                             */
 							matches[ sel ] = handleObj.needsContext ?
 								jQuery( sel, this ).index( cur ) >= 0 :
@@ -9164,11 +9338,31 @@ jQuery.event = {
 		}
 	},
 
+    // 模拟事件
+    /*
+    对于不支持 focusin/focusout 事件的浏览器，我们用 focus/blur 事件来模拟：
+    jQuery.event.simulate( fix, event.target, jQuery.event.fix( event ), true )
+    */
 	simulate: function( type, elem, event, bubble ) {
 		// Piggyback on a donor event to simulate a different one.
 		// Fake originalEvent to avoid donor's stopPropagation, but if the
 		// simulated event prevents default then we do the same on the donor.
-		var e = jQuery.extend(
+		/*
+        eg:
+        var e = jQuery.extend({},
+        {
+            a: 1,
+            b: 2,
+            c: 3
+        },
+        {
+            a: 11,
+            d: 4
+        });
+        -> e: {a: 11, b: 2, c: 3, d: 4}
+        将第二、第三个参数的属性依次复制给第一个参数，后复制的覆盖先复制的
+        */
+        var e = jQuery.extend(
 			new jQuery.Event(),
 			event,
 			{
@@ -9177,11 +9371,22 @@ jQuery.event = {
 				originalEvent: {}
 			}
 		);
+        // 冒泡
 		if ( bubble ) {
+            /*
+            这里用 focus/blur 事件模拟 focusin/focusout 事件，
+            虽然 focus/blur 事件不会冒泡，也就是不会在祖先元素上发生，
+            但是 trigger 方法会依次找到所有祖先元素，手动触发事件
+            */
 			jQuery.event.trigger( e, null, elem );
 		} else {
+            /*
+            dispatch 处理 elem 它自身的监听事件以及那些委托给 elem 的子元素的事件
+            换句话讲：它只会在自身和更深层的子元素上触发回调事件，不会向 elem 上层的祖先元素冒泡
+            */
 			jQuery.event.dispatch.call( elem, e );
 		}
+        // 阻止默认事件回调
 		if ( e.isDefaultPrevented() ) {
 			event.preventDefault();
 		}
@@ -9327,7 +9532,18 @@ jQuery.each({
 	jQuery.event.special[ orig ] = {
 		delegateType: fix,
 		bindType: fix,
+        
+        /*
+        dispatch 方法中：
 
+        args[0] = event; 
+        // event 对象替换为修正后的 event 对象
+        
+        ret = ( (jQuery.event.special[ handleObj.origType ] || {}).handle || handleObj.handler )
+							.apply( matched.elem, args )
+                       
+        所以，handle 的实参是修正后的 event 对象
+        */
 		handle: function( event ) {
 			var ret,
 				target = this,
@@ -9348,6 +9564,33 @@ jQuery.each({
 
 // Create "bubbling" focus and blur events
 // Support: Firefox, Chrome, Safari
+/*
+① 是否冒泡
+focus() 和 blur() 分别表示光标激活和丢失，事件触发元素是当前元素。
+focusin() 和 focusout() 也表示光标激活和丢失，但事件触发元素可以是子元素，然后事件冒泡上来。
+
+② 发生顺序（用户把焦点从 A 转移到 B）
+   focusout：在 A 失去焦点前发送。
+   blur：在 A 失去焦点后发送。
+   focusin：在B获得焦点前发送。
+   focus：在B获得焦点后发送。
+*/
+/*
+对于不支持 focusin/focusout 事件的浏览器，我们用 focus/blur 事件来模拟：
+jQuery.event.simulate( fix, event.target, jQuery.event.fix( event ), true )
+
+但是  focus/blur 事件不支持冒泡，所以，用事件捕获。
+这两个事件都有 setup 方法来绑定捕获事件监听：
+document.addEventListener( orig, handler, true )
+第三个参数 useCapture 为 true
+
+所以 jQuery.event.add 中的冒泡监听就不再监听冒泡事件了
+if ( !special.setup || special.setup.call( elem, data, namespaces, eventHandle ) === false ) {
+    if ( elem.addEventListener ) {
+        elem.addEventListener( type, eventHandle, false );
+    }
+}
+*/
 if ( !jQuery.support.focusinBubbles ) {
 	jQuery.each({ focus: "focusin", blur: "focusout" }, function( orig, fix ) {
 
@@ -9360,6 +9603,18 @@ if ( !jQuery.support.focusinBubbles ) {
 		jQuery.event.special[ fix ] = {
 			setup: function() {
 				if ( attaches++ === 0 ) {
+                    /*
+                    a. 因为不支持 focusin/focusout 事件，所以监听 focus/blur 事件
+                    b. 因为 focus/blur 不支持冒泡，所以捕获阶段监听
+                    c. 事件发生时，触发 handler 方法
+                    d. handler 方法模拟 focusin/focusout 事件
+
+                    为什么捕获事件绑定在 document 上？
+                    捕获事件由最外层元素向最里层元素传播，
+                    不管那个元素发生了 focus/blur 事件
+                    都是 document 上的捕获事件会最先触发
+                    这里 handler 回调方法可以做一些事件处理和拦截过滤
+                    */
 					document.addEventListener( orig, handler, true );
 				}
 			},
@@ -11246,6 +11501,10 @@ jQuery.each( ("blur focus focusin focusout load resize scroll unload click dblcl
 });
 
 jQuery.fn.extend({
+    /*
+    ① 2 个函数参数，第 1 个参数在鼠标移入的时候触发，第 2 个参数在鼠标移出时触发
+    ② 如果只有 1 个函数参数，那移入移出都执行这个方法
+    */
 	hover: function( fnOver, fnOut ) {
 		return this.mouseenter( fnOver ).mouseleave( fnOut || fnOver );
 	},
