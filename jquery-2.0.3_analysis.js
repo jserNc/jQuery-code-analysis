@@ -9877,7 +9877,8 @@ var isSimple = /^.[^:#\[\.,]*$/,
 	rparentsprev = /^(?:parents|prev(?:Until|All))/,
 	rneedsContext = jQuery.expr.match.needsContext,
 	// methods guaranteed to produce a unique set when starting from a unique set
-	guaranteedUnique = {
+	// 保证唯一
+    guaranteedUnique = {
 		children: true,
 		contents: true,
 		next: true,
@@ -9885,6 +9886,11 @@ var isSimple = /^.[^:#\[\.,]*$/,
 	};
 
 jQuery.fn.extend({
+    /*
+    ① 参数是一个字符串选择器
+       $( "p" ).find( "span" ).css( "color", "red" )
+    ② 参数是 element 或 jQuery 对象
+    */
 	find: function( selector ) {
 		var i,
 			ret = [],
@@ -10085,13 +10091,23 @@ jQuery.each({
 });
 
 jQuery.extend({
+    // 根据选择器 expr，过滤出符合要求的元素节点
 	filter: function( expr, elems, not ) {
 		var elem = elems[ 0 ];
 
 		if ( not ) {
+            // "div" -> ":not(div)"
 			expr = ":not(" + expr + ")";
 		}
 
+        /*
+            ① elems 长度为 1，并且是文档元素：
+               调用 matchesSelector 方法，返回一个数组
+            ② 否则，调用 matches 方法，jQuery.find.matches( expr，[ elems 中文档节点])
+
+            总之，这里返回值就是一个数组。要么是一个空数组 []，要么是一个包含节点元素的数组
+            所以，jQuery.filter 的作用是根据选择器，过滤出符合要求的元素节点
+        */
 		return elems.length === 1 && elem.nodeType === 1 ?
 			jQuery.find.matchesSelector( elem, expr ) ? [ elem ] : [] :
 			jQuery.find.matches( expr, jQuery.grep( elems, function( elem ) {
@@ -10129,33 +10145,75 @@ jQuery.extend({
 
 // Implement the identical functionality for filter and not
 function winnow( elements, qualifier, not ) {
+    /*
+    先说一下 jQuery.grep 方法：
+    grep: function( elems, callback, inv )
+    ① 参数
+    elems：数组或者带 length 属性的对象；
+    callback：函数
+    inv：布尔值，若不是布尔值强制转换为布尔值
+    ② 返回值
+    一个数组，由 elems 中部分元素组成的数组，也就是说过滤掉了一部分
+    ③ 过滤规则：
+       !!callback( elems[ i ], i ) 和 !!not 比较，相等就过滤掉这个元素 elems[ i ]
+    ④ 总结：找出 elems 中经过 callback 方法运算后不为 inv 的一组元素
+       
+    下面这段代码功能和 jQuery.grep 挺像的，
+    只不过过滤方法执行的时候内部 this 绑定到 elem，并且参数顺序换了一下（i 和 elem）
+    */
 	if ( jQuery.isFunction( qualifier ) ) {
 		return jQuery.grep( elements, function( elem, i ) {
 			/* jshint -W018 */
 			return !!qualifier.call( elem, i, elem ) !== not;
 		});
-
+        // 返回 elements 中部分元素组成的【数组】，判断依据是 qualifier 函数返回值跟 not 是否相等
 	}
 
+    // qualifier 是文档节点
 	if ( qualifier.nodeType ) {
 		return jQuery.grep( elements, function( elem ) {
 			return ( elem === qualifier ) !== not;
 		});
-
+        // 返回 elements 中部分元素组成的【数组】，判断依据是元素 elem 和 qualifier 是不是同一个节点
 	}
 
+    /*
+    isSimple = /^.[^:#\[\.,]*$/ 任意字符（除换行符）开头，后面不能是 : # [ . , 等符号就行
+    作用：匹配选择器
+
+    isSimple.test('div')  // true
+    isSimple.test('.cls') // true
+    isSimple.test('#id')  // true
+
+    isSimple.test('div:') // false
+    isSimple.test('div#') // false
+    */
+    // qualifier 是字符串
 	if ( typeof qualifier === "string" ) {
+        // 如果是选择器字符串，就交给 jQuery.filter 方法处理完就返回
 		if ( isSimple.test( qualifier ) ) {
 			return jQuery.filter( qualifier, elements, not );
 		}
-
+        // 否则，用 jQuery.filter 将 qualifier 字符串修正为【数组】
 		qualifier = jQuery.filter( qualifier, elements );
 	}
 
+    /*
+    core_indexOf = [].indexOf  返回元素在数组中的索引
+    [1,2,3].indexOf(1)    // 0
+    [1,2,3].indexOf('1')  // -1
+    [1,2,3].indexOf(4)    // -1
+
+    这里的 qualifier 是一个数组
+    */
 	return jQuery.grep( elements, function( elem ) {
 		return ( core_indexOf.call( qualifier, elem ) >= 0 ) !== not;
 	});
+    // 返回 elements 中部分元素组成的【数组】，判断依据是元素 elem 是否在数组 qualifier 之中
 }
+
+
+
 var rxhtmlTag = /<(?!area|br|col|embed|hr|img|input|link|meta|param)(([\w:]+)[^>]*)\/>/gi,
 	rtagName = /<([\w:]+)/,
 	rhtml = /<|&#?\w+;/,
@@ -10813,6 +10871,14 @@ jQuery.fn.extend({
 		}).end();
 	}
 });
+
+
+
+
+
+
+
+
 var curCSS, iframe,
 	// swappable if display is none or starts with table except "table", "table-cell", or "table-caption"
 	// see here for display values: https://developer.mozilla.org/en-US/docs/CSS/display
