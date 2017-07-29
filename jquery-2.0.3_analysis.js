@@ -138,7 +138,7 @@ jQuery.fn = jQuery.prototype = {
     $(null), $(""), $(undefined), $(false)
     $('#id'), $('div'), $('.cls'), $('div + p span > a[title="hi"]')
     $('<li>'), $('<li>1</li><li>2</li>')
-    $(this), $(document)
+    $(this), $(document),$(document.getElementsByTagName('div')[0]),$(document.getElementsByTagName('div'))
     $(function(){})
     $([]), $({})
 
@@ -778,8 +778,8 @@ jQuery.extend({
 	// aren't supported. They return false on IE (#2968).
     /*
     ie 下，有些函数不一定会返回 true，如 alert
-
-    typeof alert  // 在 ie 下返回 'object'，而不是 'function'
+    typeof alert  
+    // 在 ie 下返回 'object'，而不是 'function'
      */ 
     // 是否为函数，这个方法不能判断所有的函数，比如 alert，要想准备判断所有函数，可以根据以上注释(#2968)去 jQuery 官网查找
 	isFunction: function( obj ) {
