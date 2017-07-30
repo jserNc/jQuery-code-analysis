@@ -10802,6 +10802,8 @@ function fixInput( src, dest ) {
 		dest.defaultValue = src.defaultValue;
 	}
 }
+
+
 jQuery.fn.extend({
 	wrapAll: function( html ) {
 		var wrap;
@@ -10855,6 +10857,14 @@ jQuery.fn.extend({
 		});
 	},
 
+    /*
+    ¢Ù $('div').wrap('<strong class="b"></strong>');
+    ¢Ú $('div').wrap('<strong />');
+    ¢Û $('div').wrap('<strong>123</strong>');
+    ¢Ü $('div').wrap('<strong><em></em></strong>');
+    ¢Ý $('div').wrap(document.getElementById('wrapper'));
+    ¢Þ $('div').wrap(function(){});
+     */
 	wrap: function( html ) {
 		var isFunction = jQuery.isFunction( html );
 
