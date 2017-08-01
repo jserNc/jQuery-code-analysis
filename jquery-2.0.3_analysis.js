@@ -1447,6 +1447,9 @@ jQuery.extend({
         [1].concat([[2]])
         // [1,[2]]
 
+		[].concat.apply([],[[2]])
+		// [2]
+
         apply 方法的第二个参数为数组，实际用的时候回拆开成单个的元素，所以就避免了二维数组的情况
          */
 		return core_concat.apply( [], ret );
@@ -9887,9 +9890,8 @@ var isSimple = /^.[^:#\[\.,]*$/,
 
 jQuery.fn.extend({
     /*
-    ① 参数是一个字符串选择器
-       $( "p" ).find( "span" ).css( "color", "red" )
-    ② 参数是 element 或 jQuery 对象
+	参数：String/Element/jQuery 等类型指定的表达式
+	作用：以当前 JQ 对象为上下文，寻找满足选择器 selector 的后代元素组成的 JQ 对象
     */
 	find: function( selector ) {
 		var i,
@@ -9897,8 +9899,25 @@ jQuery.fn.extend({
 			self = this,
 			len = self.length;
 
+		// 参数不是字符串，这里返回 JQ 对象
 		if ( typeof selector !== "string" ) {
+			/*
+			① 找出元素 jQuery( selector )
+			② 过滤元素
+			③ 过滤规则：选出来的元素一定要是当前 JQ 对象的后代元素
+
+			这里看一下 :
+			$.fn.filter = function ( selector ) {
+				return this.pushStack( winnow(this, selector || [], false) );
+			}
+			作用：过滤 this 这个对象，然后将链式调用的驱动对象指为过滤后的对象
+			*/
 			return this.pushStack( jQuery( selector ).filter(function() {
+				/*
+				对于 jQuery.contains( self[ i ], this ) 
+				self[ i ] 是调用 find 方法的一组元素中的一个；
+				this 是 jQuery( selector ) 这一组元素中的一个
+				*/
 				for ( i = 0; i < len; i++ ) {
 					if ( jQuery.contains( self[ i ], this ) ) {
 						return true;
@@ -9907,23 +9926,48 @@ jQuery.fn.extend({
 			}) );
 		}
 
+		// 参数为字符串，调用静态方法 jQuery.find
 		for ( i = 0; i < len; i++ ) {
+			/*
+			 jQuery.find 函数将在当前 self[ i ] 的
+			 所有后代元素中筛选符合指定表达式 selector 的元素组成的 JQ 对象
+			 ret 存放结果
+			*/
 			jQuery.find( selector, self[ i ], ret );
 		}
 
 		// Needed because $( selector, context ) becomes $( context ).find( selector )
+		// 将链式调用的驱动 JQ 对象交给 ret
 		ret = this.pushStack( len > 1 ? jQuery.unique( ret ) : ret );
 		ret.selector = this.selector ? this.selector + " " + selector : selector;
 		return ret;
 	},
 
+	/*
+	参数：String/Element/jQuery 等类型指定的表达式
+	作用：筛选出包含特定后代的元素，并以jQuery对象的形式返回
+	*/
 	has: function( target ) {
 		var targets = jQuery( target, this ),
 			l = targets.length;
 
+		/*
+		上面 targets = jQuery( target, this ) 已经过滤出后代元素了，为什么还需要后面的操作呢？
+		原因：
+		这里确实以 this 为上下文，得到了后代元素组 targets。但是，不要忘了，this 可能是一组元素
+		吃大锅饭不行，下面还需要找出到底是 this 中的哪些元素是真的包含 targets[i] 的
+
+		对于方法 $.fn.filter，哪个实例对象调用它，就过滤哪个实例对象
+		这里是过滤调用 has 方法的 JQ 对象
+		*/
 		return this.filter(function() {
 			var i = 0;
 			for ( ; i < l; i++ ) {
+				/*
+				这里的 this 不能等同于外层的 this
+				外层的 this 可以看到一组元素
+				这里的 this 只是那一组元素中的一个
+				*/
 				if ( jQuery.contains( this, targets[i] ) ) {
 					return true;
 				}
@@ -9931,10 +9975,12 @@ jQuery.fn.extend({
 		});
 	},
 
+	// 下面的 filter 方法过滤后剩下的部分
 	not: function( selector ) {
 		return this.pushStack( winnow(this, selector || [], true) );
 	},
 
+	// 过滤调用该 filter 方法的 JQ 对象，然后叫链式调用的驱动对象交给过滤后的 JQ 对象
 	filter: function( selector ) {
 		return this.pushStack( winnow(this, selector || [], false) );
 	},
@@ -10018,6 +10064,7 @@ jQuery.fn.extend({
 	}
 });
 
+// 从一个元素出发，迭代检索某个方向上的所有元素，找到了就返回
 function sibling( cur, dir ) {
 	while ( (cur = cur[dir]) && cur.nodeType !== 1 ) {}
 
@@ -10025,67 +10072,125 @@ function sibling( cur, dir ) {
 }
 
 jQuery.each({
+	// 返回父元素
 	parent: function( elem ) {
 		var parent = elem.parentNode;
+		// 11 文档碎片节点
 		return parent && parent.nodeType !== 11 ? parent : null;
 	},
+	// 返回祖先元素
 	parents: function( elem ) {
 		return jQuery.dir( elem, "parentNode" );
 	},
+	// 返回祖先元素（到某个祖先元素终止）
 	parentsUntil: function( elem, i, until ) {
 		return jQuery.dir( elem, "parentNode", until );
 	},
+	// 返回后面的一个兄弟节点
 	next: function( elem ) {
 		return sibling( elem, "nextSibling" );
 	},
+	// 返回前面的一个兄弟节点
 	prev: function( elem ) {
 		return sibling( elem, "previousSibling" );
 	},
+	// 返回后面的所有兄弟节点
 	nextAll: function( elem ) {
 		return jQuery.dir( elem, "nextSibling" );
 	},
+	// 返回前面的所有兄弟节点
 	prevAll: function( elem ) {
 		return jQuery.dir( elem, "previousSibling" );
 	},
+	// 返回后续的兄弟节点（到某个兄弟终止）
 	nextUntil: function( elem, i, until ) {
 		return jQuery.dir( elem, "nextSibling", until );
 	},
+	// 返回前面的兄弟节点（到某个兄弟终止）
 	prevUntil: function( elem, i, until ) {
 		return jQuery.dir( elem, "previousSibling", until );
 	},
+	// 返回所有的兄弟节点
 	siblings: function( elem ) {
 		return jQuery.sibling( ( elem.parentNode || {} ).firstChild, elem );
 	},
+	// 返回所有子节点
 	children: function( elem ) {
 		return jQuery.sibling( elem.firstChild );
 	},
+	// 返回当前框架文档或者子元素组成的数组
 	contents: function( elem ) {
+		// contentDocument 属性以 HTML 对象返回框架容纳的文档
 		return elem.contentDocument || jQuery.merge( [], elem.childNodes );
 	}
 }, function( name, fn ) {
 	jQuery.fn[ name ] = function( until, selector ) {
+		// 这里得到了一个 matched 数组，下面会对这个数组进行过滤、去重、倒置等操作
 		var matched = jQuery.map( this, fn, until );
+		/*
+		对 this 对象的每一个元素，执行：
+		value = fn( this[ i ], i, until )
+
+		以 fn = function( elem ) {
+			return jQuery.dir( elem, "nextSibling" );
+		} 为例：
+
+		返回一个数组，数组内容为 this[ i ] 后面的所有兄弟元素
+
+		那么 matched 的值就是一个二维数组吗？
+		并不是！因为 match 方法最后有个处理：
+
+		return core_concat.apply( [], ret );
+
+		这意味着二维数据 ret，最后会转化为一维数组再返回，举例：
+		[].concat.apply([],[[1],[2,3],[4,5]])
+		-> [1, 2, 3, 4, 5]
+		*/
 
 		if ( name.slice( -5 ) !== "Until" ) {
 			selector = until;
 		}
 
+		/*
+		之前的 matched 中基本已经选好的数据，
+		根据选择器 selector，再过滤一下 matched 中的元素
+		*/
 		if ( selector && typeof selector === "string" ) {
 			matched = jQuery.filter( selector, matched );
 		}
 
+		// this 为 $('div') 等多个元素集合，对 matched 数组做一些处理
 		if ( this.length > 1 ) {
 			// Remove duplicates
+			/*
+			guaranteedUnique = {
+				children: true,
+				contents: true,
+				next: true,
+				prev: true
+			};
+
+			jQuery.unique() 函数用于根据元素在文档中出现的先后顺序对 DOM 元素数组进行排序，并移除重复的元素。
+			*/
 			if ( !guaranteedUnique[ name ] ) {
 				jQuery.unique( matched );
 			}
 
 			// Reverse order for parents* and prev-derivatives
+			/*
+			rparentsprev = /^(?:parents|prev(?:Until|All))/
+
+			parents、prevAll、prevUntil 等方法，倒置一下 matched 数组
+			*/
 			if ( rparentsprev.test( name ) ) {
 				matched.reverse();
 			}
 		}
 
+		/*
+		将 matched 作为后面链式调用的驱动对象
+		eg: $('div').pushStack($('span')).css('background','red') -> span背景变红
+		*/
 		return this.pushStack( matched );
 	};
 });
@@ -10114,13 +10219,26 @@ jQuery.extend({
 				return elem.nodeType === 1;
 			}));
 	},
-
+	
+	/**
+	 * 从一个元素出发，迭代检索某个方向上的所有元素并记录，直到与遇到document对象或遇到until匹配的元素
+	 * 迭代条件（简化）：cur.nodeType !== 9 && !jQuery( cur ).is( until )
+	 * elem	起始元素
+	 * dir	迭代方向，可选值：parentNode nextSibling previousSibling
+	 * until 选择器表达式，如果遇到until匹配的元素，迭代终止
+	 * 返回值：一组原生元素组成的数组
+	 */
 	dir: function( elem, dir, until ) {
 		var matched = [],
 			truncate = until !== undefined;
+			/*
+			① until 为 undefined 时，truncate 为 false;
+			② until 不为 undefined 时，truncate 为 true;
+			*/
 
 		while ( (elem = elem[ dir ]) && elem.nodeType !== 9 ) {
 			if ( elem.nodeType === 1 ) {
+				//【until 为 undefined】或【找到了目标元素】，就终止查找
 				if ( truncate && jQuery( elem ).is( until ) ) {
 					break;
 				}
@@ -10130,6 +10248,7 @@ jQuery.extend({
 		return matched;
 	},
 
+	// 返回元素 n 的所有后续兄弟元素组成的数组，包含 n ，不包含 elem
 	sibling: function( n, elem ) {
 		var matched = [];
 
