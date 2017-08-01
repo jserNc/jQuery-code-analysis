@@ -9985,7 +9985,13 @@ jQuery.fn.extend({
 		return this.pushStack( winnow(this, selector || [], false) );
 	},
 
+    // 判断当前 JQ 对象是否在类数组 jQuery( selector ) 或数组 selector 中，返回值为布尔值
 	is: function( selector ) {
+        /*
+        ① . 运算符优先级大于 ！
+        ② 当 selector 是字符串的时候，看 this 是否在类数组 jQuery( selector ) 中
+        ③ 将最终结果转为布尔值
+         */
 		return !!winnow(
 			this,
 
@@ -9998,19 +10004,28 @@ jQuery.fn.extend({
 		).length;
 	},
 
+    /*
+    作用：从当前匹配元素开始，逐级向上级选取符合指定表达式的第一个（最近的）元素，并以 jQuery 对象的形式返回。
+    expr    String/Element/jQuery 等类型指定的表达式。
+    context 可选/Element/jQuery 等类型指定表示查找范围的文档节点。
+     */
+    // 在给定的范围里，找出最近的的符合表达式 selectors 的元素
 	closest: function( selectors, context ) {
 		var cur,
 			i = 0,
 			l = this.length,
 			matched = [],
+            // 一组节点
 			pos = ( rneedsContext.test( selectors ) || typeof selectors !== "string" ) ?
 				jQuery( selectors, context || this.context ) :
 				0;
 
+        // 对 this 这一组元素，每个 this[i] 找到一个最近的 cur 就跳出内层循环
 		for ( ; i < l; i++ ) {
 			for ( cur = this[i]; cur && cur !== context; cur = cur.parentNode ) {
 				// Always skip document fragments
 				if ( cur.nodeType < 11 && (pos ?
+                    // cur 在 pos 这一组节点当中
 					pos.index(cur) > -1 :
 
 					// Don't pass non-elements to Sizzle
@@ -10019,10 +10034,11 @@ jQuery.fn.extend({
 
 					cur = matched.push( cur );
 					break;
+                    // 跳出内循环
 				}
 			}
 		}
-
+        // 对最终数组去重处理
 		return this.pushStack( matched.length > 1 ? jQuery.unique( matched ) : matched );
 	},
 
@@ -10031,16 +10047,34 @@ jQuery.fn.extend({
 	index: function( elem ) {
 
 		// No argument, return index in parent
+        /*
+        ① 没有参数，返回当前元素在其父节点中的索引
+        ② jQuery.fn.first() 用于获取当前 jQuery 对象所匹配的元素中的第 1 个元素，并返回封装该元素的 jQuery 对象
+
+        注意一下 this[ 0 ] 和 this.first() 的差异：
+        this[ 0 ] 是指 this 对象的第一个原生节点
+        this.first() 是指 this 对象的第一个原生节点包装后的 jQuery 对象
+         */
 		if ( !elem ) {
 			return ( this[ 0 ] && this[ 0 ].parentNode ) ? this.first().prevAll().length : -1;
 		}
 
 		// index in selector
+        /*
+        jQuery( elem ) 是个类数组，索引 0，1，2... 分别对应原生对象
+        这里返回原生对象 this[ 0 ] 在类数组 Query( elem ) 中的索引
+         */
 		if ( typeof elem === "string" ) {
 			return core_indexOf.call( jQuery( elem ), this[ 0 ] );
 		}
 
 		// Locate the position of the desired element
+        /*
+        ① 如果 elem 是个 jQuery 对象，返回 elem[ 0 ] 在 this 这个 jQuery 对象中的索引
+        ② elem 是原生对象，返回 elem 在 this 这个 jQuery 对象中的索引\
+
+        其中，每个 jQuery 对象都有 jquery 属性
+         */
 		return core_indexOf.call( this,
 
 			// If it receives a jQuery object, the first element is used
@@ -10048,15 +10082,31 @@ jQuery.fn.extend({
 		);
 	},
 
+    /*
+    作用：用于向当前匹配元素中添加符合指定表达式的元素，并以 jQuery 对象的形式返回
+    expr    String/Element/jQuery 等类型指定的表达式。
+    context 可选/Element/jQuery 等类型指定表示查找范围的文档节点，该参数只有在 expr 参数表示选择器字符串时才可用。
+     */
 	add: function( selector, context ) {
 		var set = typeof selector === "string" ?
 				jQuery( selector, context ) :
+                // jQuery.makeArray 返回原生元素组成的数组
 				jQuery.makeArray( selector && selector.nodeType ? [ selector ] : selector ),
+                // this.get() 也是返回原生元素组成的数组
 			all = jQuery.merge( this.get(), set );
 
+        // 返回之前去重
 		return this.pushStack( jQuery.unique(all) );
 	},
 
+    /*
+    作用：用于将之前匹配的元素加入到当前匹配的元素中，并以新的jQuery对象的形式返回。
+    selector  可选/String 类型指定的选择器字符串
+    如果省略selector参数，则添加之前压栈之前的 jQuery 对象
+
+    ① this.prevObject 表示压栈之前的 jQuery 对象
+    ② this.prevObject.filter(selector) 表示按照选择符 selector 过滤 this.prevObject
+     */
 	addBack: function( selector ) {
 		return this.add( selector == null ?
 			this.prevObject : this.prevObject.filter(selector)
