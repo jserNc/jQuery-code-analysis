@@ -941,7 +941,7 @@ jQuery.extend({
     如果多标签 $('<li></li><li></li>') -> $.parseHTML() -> jQuery.buildFragment( [ data ], context, scripts )
      */
     parseHTML: function( data, context, keepScripts ) {
-        // 不是字符串 或者 空字符串，就返回
+        // 不是【字符串】或者【空字符串】就返回
 		if ( !data || typeof data !== "string" ) {
 			return null;
 		}
@@ -10414,6 +10414,29 @@ wrapMap.optgroup = wrapMap.option;
 wrapMap.tbody = wrapMap.tfoot = wrapMap.colgroup = wrapMap.caption = wrapMap.thead;
 wrapMap.th = wrapMap.td;
 
+/*
+相当于：
+rapMap = {
+	optgroup:Array(3)
+	option:Array(3)
+
+	tbody:Array(3)
+	tfoot:Array(3)
+	colgroup:Array(3)
+	caption:Array(3)
+	thead:Array(3)
+
+	col:Array(3)
+
+	tr:Array(3)
+
+	th:Array(3)
+	td:Array(3)
+
+	_default:Array(3)
+};
+*/
+
 jQuery.fn.extend({
 	text: function( value ) {
 		return jQuery.access( this, function( value ) {
@@ -10730,13 +10753,35 @@ jQuery.extend({
 		return clone;
 	},
 
+	/*
+	有两个地方调用 buildFragment 方法：
+	① parseHTML 中：
+	   parsed = jQuery.buildFragment( [ data ], context, scripts );
+	② domManip 中：
+	   fragment = jQuery.buildFragment( args, this[ 0 ].ownerDocument, false, !allowIntersection && this );
+
+	其中：
+	elems 为数组或类数组
+	context 为上下文
+	scripts 为布尔值或数组
+	selection 可选/类数组
+	*/
 	buildFragment: function( elems, context, scripts, selection ) {
 		var elem, tmp, tag, wrap, contains, j,
 			i = 0,
 			l = elems.length,
 			fragment = context.createDocumentFragment(),
 			nodes = [];
-
+		/*
+		DocumentFragment 节点具有下列特征：
+		① nodeType 的值为 11
+		② nodeName 的值为 #document-fragment
+		③ nodeValue 的值为 null
+		④ parentNode 的值为 null
+		⑤ 子节点可以是 Element、ProcessingInstruction、Comment、Text、CDATASection 或 EntityReference
+		⑥ DocumentFragment 节点不属于文档树，继承的 parentNode 属性总是 null
+		⑦ 把一个 DocumentFragment 节点插入文档树时，插入的不是 DocumentFragment 自身，而是它的所有子孙节点
+		*/
 		for ( ; i < l; i++ ) {
 			elem = elems[ i ];
 
@@ -10749,30 +10794,81 @@ jQuery.extend({
 					jQuery.merge( nodes, elem.nodeType ? [ elem ] : elem );
 
 				// Convert non-html into a text node
+				/*
+				rhtml = /<|&#?\w+;/ 匹配 < 或 &#?\w+;
+				即匹配包含 < 或 实体 的字符串
+				rhtml.test( '<abc' )		// true
+				rhtml.test( 'abc&lt;aba' )  // true
+
+				看两个 html 实体符号：
+				显示    描述	  实体名称  实体编号
+				<		小于号		&lt;	 &#60;
+				>		大于号		&gt;	 &#62;
+				*/
+				// 将不包含 html 标签的字符串转换为文本节点
 				} else if ( !rhtml.test( elem ) ) {
 					nodes.push( context.createTextNode( elem ) );
 
 				// Convert html into DOM nodes
 				} else {
+					/*
+					① 循环第一次 tmp 为假
+					② appendChild 方法的返回值是被添加的节点
+					③ 后面的循环，tmp 就是第一次创建的 div 节点
+					*/
 					tmp = tmp || fragment.appendChild( context.createElement("div") );
 
 					// Deserialize a standard representation
-                    // rtagName = /<([\w:]+)/ \w 字母数字或下划线或汉字，不包括 < 和 > 这种符号
+					/*
+					rtagName = /<([\w:]+)/ 
+					① \w 字母数字或下划线或汉字，不包括 < 和 > 这种符号
+					② [\w:] 表示 \w 或 : 
+					   也就是说，字母数字或下划线或汉字或:
+					
+					eg：
+					rtagName.exec('<div') -> ["<div", "div", index: 0, input: "<div"]
+					rtagName.exec('<div>') ->  ["<div", "div", index: 0, input: "<div>"]
+					rtagName.exec('<div><span') -> ["<div", "div", index: 0, input: "<div><span"]
+
+					注意这里的正则没有全局 g 匹配，所以只会取第一个标签
+
+					下面的 tag 就是匹配出来的元素标签名
+					*/
 					tag = ( rtagName.exec( elem ) || ["", ""] )[ 1 ].toLowerCase();
-					// 如 tag 为 thead，wrap 为 [ 1, "<table>", "</table>" ] 
-                    // 如 tag 不在 wrapMap 属性列表里，wrap 为默认的 [ 0, "", "" ]
+					/*
+					wrap 是从 wrapMap 中匹配出来的数组
+					eg: 
+					tag 为 thead，wrap 为 [ 1, "<table>", "</table>" ] 
+                    tag 不在 wrapMap 属性列表里，wrap 为默认的 [ 0, "", "" ]
+					*/
                     wrap = wrapMap[ tag ] || wrapMap._default;
-                    // rxhtmlTag = /<(?!area|br|col|embed|hr|img|input|link|meta|param)(([\w:]+)[^>]*)\/>/gi
-					// (?!exp) 匹配后面跟的不是exp的位置
-                    // br、img 等本来就不闭合的标签除外
-                    // rxhtmlTag 匹配没有闭合的标签，如 <span /> 会通过匹配，<span></span> 不会通过
-                    // rxhtmlTag.exec('<span />')，返回["<span />", "span ", "span", index: 0, input: "<span />"]
-                    // 对于replace函数，用第二个参数替换第一个参数
-                    // 如果第二个参数是字符串，其中的$1、$2分别表示rxhtmlTag中第1、2个子表达式内容
-                    // 这里替换应该是起到闭合标签的作用如，<span /> 变成 <span ></span>
+					/*
+					(1) rxhtmlTag = /<(?!area|br|col|embed|hr|img|input|link|meta|param)(([\w:]+)[^>]*)\/>/gi
+						匹配没有闭合的标签
+
+					① (?!exp) 匹配后面跟的不是exp的位置
+					② br、img、input 等本来就不闭合的标签除外
+					③ rxhtmlTag.exec('<span />') -> ["<span />", "span ", "span", index: 0, input: "<span />"]
+					④ <span></span> 等闭合标签不会通过匹配 rxhtmlTag.exec('<span></span>') -> null
+
+					(2) elem.replace( rxhtmlTag, "<$1></$2>" )
+						用第二个参数替换第一个参数
+
+					① 如果第二个参数是字符串，其中的 $1、$2 分别表示 rxhtmlTag 中第 1、2 个子表达式内容
+					② 这个替换起到闭合标签的作用 <span /> -> <span ></span>
+
+					(3) 对于 option、tr、td 等一部分元素，需要给他们加一层或多层默认的祖先元素
+					eg:
+					<td></td> -> <table><tbody><tr><td></td></tr></tbody></table>
+					*/
                     tmp.innerHTML = wrap[ 1 ] + elem.replace( rxhtmlTag, "<$1></$2>" ) + wrap[ 2 ];
 
 					// Descend through wrappers to the right content
+					/*
+					假如：tmp.innerHTML = <table><tbody><tr><td></td></tr></tbody></table>
+					j = 3
+					执行完下面的循环 tmp = <tr><td></td></tr>
+					*/
 					j = wrap[ 0 ];
 					while ( j-- ) {
 						tmp = tmp.lastChild;
@@ -10800,6 +10896,13 @@ jQuery.extend({
 
 			// #4087 - If origin and destination elements are the same, and this is
 			// that element, do not do anything
+			/*
+			jQuery.inArray : function ( elem, arr, i ) {
+				return arr == null ? -1 : core_indexOf.call( arr, elem, i );
+			}
+
+			如果 elem 在数组 selection 里，则跳过这次循环
+			*/
 			if ( selection && jQuery.inArray( elem, selection ) !== -1 ) {
 				continue;
 			}
@@ -10807,9 +10910,18 @@ jQuery.extend({
 			contains = jQuery.contains( elem.ownerDocument, elem );
 
 			// Append to fragment
+			/*
+			① appendChild 方法返回被添加的节点
+			② getAll 返回指定元素（参数 1）下的标签名为参数 2 的子元素
+			③ 获取 elem 中的 script 元素
+			*/
 			tmp = getAll( fragment.appendChild( elem ), "script" );
 
 			// Preserve script evaluation history
+			/*
+			setGlobalEval 会依次给 tmp 中每一个元素加一个 "globalEval" 属性：
+			for 循环: data_priv.set(elems[ i ], "globalEval",true)
+			*/
 			if ( contains ) {
 				setGlobalEval( tmp );
 			}
@@ -10817,6 +10929,16 @@ jQuery.extend({
 			// Capture executables
 			if ( scripts ) {
 				j = 0;
+				/*
+				rscriptType = /^$|\/(?:java|ecma)script/i
+				script 标签：
+				老式写法：<script type="text/javascript"></script> 
+				h5 写法：<script></script>
+				
+				eg:
+				rscriptType.test("") -> true
+				rscriptType.test("text/javascript") -> true
+				*/
 				while ( (elem = tmp[ j++ ]) ) {
 					if ( rscriptType.test( elem.type || "" ) ) {
 						scripts.push( elem );
@@ -10907,6 +11029,15 @@ function setGlobalEval( elems, refElements ) {
 		i = 0;
 
 	for ( ; i < l; i++ ) {
+		/*
+		注意第三个参数：
+		!refElements || data_priv.get( refElements[ i ], "globalEval" )
+		① 如果没有参数 refElements，以上表达式为 true
+		② 如果 refElements[ i ] 存有属性 "globalEval"，以上表达式也为 true
+
+		以上两种情况下，相当于：
+		data_priv.set(elems[ i ], "globalEval",true)
+		*/
 		data_priv.set(
 			elems[ i ], "globalEval", !refElements || data_priv.get( refElements[ i ], "globalEval" )
 		);
@@ -10948,11 +11079,18 @@ function cloneCopyEvent( src, dest ) {
 }
 
 
+
+// 根据标签名选择元素
 function getAll( context, tag ) {
 	var ret = context.getElementsByTagName ? context.getElementsByTagName( tag || "*" ) :
 			context.querySelectorAll ? context.querySelectorAll( tag || "*" ) :
 			[];
 
+	/*
+	&&　优先级高于　||
+	① 没有 tag 参数或 context 的 nodeName 就是 tag，这时 ret 为 []，所以返回的是数组 [ context ]
+	② 有 tag 参数，返回的是 context 中标签名为 tag 的子元素组成的数组 [node1,node2,...]
+	*/
 	return tag === undefined || tag && jQuery.nodeName( context, tag ) ?
 		jQuery.merge( [ context ], ret ) :
 		ret;
