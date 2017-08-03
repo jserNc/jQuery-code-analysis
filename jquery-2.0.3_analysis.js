@@ -1323,19 +1323,18 @@ jQuery.extend({
 		return arr == null ? -1 : core_indexOf.call( arr, elem, i );
 	},
 
-    // 合并数组，两个参数都得是类数组（索引为数组，带length属性）或真数组
+    // 第二个类数组的元素合并进第一个类数组
 	merge: function( first, second ) {
 		var l = second.length,
 			i = first.length,
 			j = 0;
 
-        // eg : $.merge(['a','b'],['c','d'])
+        // l 是数字时，可以根据 l 来遍历数组 second
 		if ( typeof l === "number" ) {
 			for ( ; j < l; j++ ) {
 				first[ i++ ] = second[ j ];
 			}
-        // ({length:'abc'}).length -> 'abc'
-        // ({}).length -> undefined
+        // l 不是数字时，那就根据让索引 j++ 来遍历 second
 		} else {
 			while ( second[j] !== undefined ) {
 				first[ i++ ] = second[ j++ ];
@@ -1550,29 +1549,20 @@ jQuery.extend({
 
 	// Multifunctional method to get and set values of a collection
 	// The value/s can optionally be executed if it's a function
-    // 多功能值操作（内部） 
     /*
-    <div id="div1" style="width:100px;height:100px;background:red">aaa</div>
-    
-    // $().css()  $().attr() 等方法可以进行 get/set 操作
-    // 这些方法都是调用下面的 access 方法
+	access 方法作用：设置/获取属性值，被 css、attr、text 等方法调用完成不同的具体功能
 
-    console.log($('#div1').css('width'))  // 100px
-    $('#div1').css('background','green')  // 背景变绿
-
-    $('#div1').css({'background':'green',width:'300px'}) // 背景变绿，宽变为 300px
-     */
-    
-    // elems 指 $('#div1')，fn 指 css 等方法，key 指 'background' 等，value 指 'green'
-	// chainable 控制 set 还是 get
-    /*
-    attr: function( name, value ) {
-        // 下文会定义 jQuery.attr 方法
+	以 attr 方法为例：
+	attr: function( name, value ) {
 		return jQuery.access( this, jQuery.attr, name, value, arguments.length > 1 );
-         
-        emptyGet, raw 这些没传的参数都是 undefined
 	}
-    */
+	① elems 指 jquery 实例对象，如 this
+	② fn 指函数，如 jQuery.attr
+	③ key 指属性名，如 title
+	④ value 指属性值，如 'str'
+	⑤ chainable 为 true 表示设置属性，为 false 表示获取属性
+	⑥ emptyGet, raw 等没传的参数都是 undefined
+     */
     access: function( elems, fn, key, value, chainable, emptyGet, raw ) {
 		var i = 0,
 			length = elems.length,
@@ -1604,16 +1594,19 @@ jQuery.extend({
 				raw = true;
 			}
 
-            // 没有 key 的时候
+            // 没有指定 key 的时候
 			if ( bulk ) {
 				// Bulk operations run against the entire set
-                // value 不是函数的时候，比如字符串 'green'
+				/*
+				① value 不是函数的时候，raw 强制为 true
+				② value 是函数的时候，如果 raw 本来就是【真】，也走这里
+				*/
 				if ( raw ) {
 					fn.call( elems, value );
 					fn = null;
 
 				// ...except when executing function values
-                // value 是函数
+                // value 是函数，并且 raw 原本不为真 ，修正 fn
 				} else {
 					bulk = fn;
 					fn = function( elem, key, value ) {
@@ -1622,12 +1615,23 @@ jQuery.extend({
 				}
 			}
 
-            // 有 key 值，一般情况下直接到这里
+            /*
+			fn 为真，说明：
+			① 指定了 key 值，fn 还是传入的 fn
+			② fn 是修正后的，因为原来的 fn = null
+			*/
 			if ( fn ) {
 				for ( ; i < length; i++ ) {
                     /*
-                    fn 的一个例子：
-                    jQuery.attr: function( elem, name, value ) {}
+					① raw 为【真】，并且 fn 不为【假】，说明 bulk 为【假】，也就是有 key 值
+					② raw 为【假】，说明 value 一定是函数，要不然会被强制改成【真】的
+					③ fn( elems[i], key, value.call( elems[i], i, fn( elems[i], key ) ) );
+					   value 方法会调用 fn 方法，fn 方法又会调用 value 方法，看起来好像会死循环，其实并不会
+					   a. 首先执行 fn( elems[i], key )
+					      -> tmp = bulk.call( jQuery( elems[i] ), undefined )
+					   b. 然后 tmp = value.call( elems[i], i, tmp )
+					   c. 最后 fn( elems[i], key, tmp )
+					      -> bulk.call( jQuery( elems[i] ), tmp ) 
                     */
 					fn( elems[i], key, raw ? value : value.call( elems[i], i, fn( elems[i], key ) ) );
 				}
@@ -1638,6 +1642,14 @@ jQuery.extend({
         // 获取的时候：
         // 如果没有key值，fn.call( elems )
         // 如果有key值，并且有元素，在第一个元素上获取，否则返回 emptyGet（undefined）
+		/*
+		① chainable 为【真】，说明是设置，前面已经用 fn 处理过了 elems，这里直接返回 elems 就好了
+		② chainable 为【假】
+		   a. bulk 为【真】，说明是没有 key 值，执行 fn.call( elems )
+		   b. bulk 为【假】，说明有 key 值
+		      如果当前 jQuery 对象有长度，返回  ( elems[0], key )，逗号表达式，结果为 key
+			  如果当前 jQuery 对象没有长度，返回 emptyGet
+		*/
 		return chainable ?
 			elems :
 
@@ -10438,6 +10450,9 @@ rapMap = {
 */
 
 jQuery.fn.extend({
+	/*
+	① 参数为空，value 为 undefined，
+	*/
 	text: function( value ) {
 		return jQuery.access( this, function( value ) {
 			return value === undefined ?
@@ -10600,9 +10615,34 @@ jQuery.fn.extend({
 		return this.remove( selector, true );
 	},
 
+	/*
+	① domManip 即 dom-Manipulate，也就是 dom 操作的意思
+	② 参数 args 可以为 HTML字符串，DOM 元素，元素数组，或者 jQuery 对象
+	③ domManip 完成两个功能：
+	   a. 文档碎片 dom 添加
+	   b. 如果 dom 节点里有 script 标签，额外处理一下
+	④ domManip 的主要功能是为了实现 DOM 的插入和替换。具体共为以下 5 个函数服务
+	内部后插入（append）
+	内部前插入（prepend）
+	外部前插入（before）
+	外部后插入（after）
+	替换元素 （replaceWith）
+
+	jQuery.each 方法又生成了另外 5 个函数：
+	appendTo、prependTo、insertBefore、insertAfter、replaceAll
+	*/
 	domManip: function( args, callback, allowIntersection ) {
 
 		// Flatten any nested arrays
+		/*
+		① 将参数转为真数组
+		② 即便有数组类型参数最终还是转成一维数组
+		function f(){
+			return [].concat.apply([],arguments);
+		}
+		f(1,2,3) -> [1, 2, 3]
+		f(1,[2,3]) -> [1, 2, 3]
+		*/
 		args = core_concat.apply( [], args );
 
 		var fragment, first, scripts, hasScripts, node, doc,
@@ -10614,12 +10654,36 @@ jQuery.fn.extend({
 			isFunction = jQuery.isFunction( value );
 
 		// We can't cloneNode fragments that contain checked, in WebKit
+		/*
+		!( l <= 1 || typeof value !== "string" || jQuery.support.checkClone || !rchecked.test( value ) ) 
+		-> l > 1 && typeof value === "string" && !jQuery.support.checkClone && rchecked.test( value )
+
+		rchecked = /checked\s*(?:[^=]|=\s*.checked.)/i
+		rchecked.test('checked="checked"') -> true
+
+		旧的 WebKit，克隆 fragment 节点，如果该节点下有 input，那么 input 的 checkd 状态不会被复制
+		*/
 		if ( isFunction || !( l <= 1 || typeof value !== "string" || jQuery.support.checkClone || !rchecked.test( value ) ) ) {
 			return this.each(function( index ) {
 				var self = set.eq( index );
 				if ( isFunction ) {
+					/*
+					实例方法：
+					jQuery.fn.each: function( callback, args ) {
+						return jQuery.each( this, callback, args );
+					}
+					静态方法：
+					jQuery.each : function( obj, callback, args ) {
+						...
+						value = callback.call( obj[ i ], i, obj[ i ] );
+						...
+					}
+
+					所以，下面的 this 为 set[index]
+					*/
 					args[ 0 ] = value.call( this, index, self.html() );
 				}
+				// 如果第一个参数是函数，将其修正为字符串后，递归调用 domManip 方法
 				self.domManip( args, callback, allowIntersection );
 			});
 		}
@@ -10627,12 +10691,26 @@ jQuery.fn.extend({
 		if ( l ) {
 			fragment = jQuery.buildFragment( args, this[ 0 ].ownerDocument, false, !allowIntersection && this );
 			first = fragment.firstChild;
+			/*
+			var args = $('p');
+			fragment = jQuery.buildFragment( args, document, false, false );
 
+			fragment.firstChild
+			-> <p>This is a paragraph.</p>
+			*/
+			
+			// 只有一个子节点
 			if ( fragment.childNodes.length === 1 ) {
 				fragment = first;
 			}
 
+			// 必须至少有一个子节点，要不然后面就不会继续处理了
 			if ( first ) {
+				/*
+				① getAll 返回指定元素（参数 1）中标签名为参数 2 的子元素组成的数组
+				② disableScript 方法禁用 script 标签
+				③ 下面一句表示禁止 fragment 中的所有 script 标签
+				*/
 				scripts = jQuery.map( getAll( fragment, "script" ), disableScript );
 				hasScripts = scripts.length;
 
@@ -10640,8 +10718,14 @@ jQuery.fn.extend({
 				// being emptied incorrectly in certain situations (#8070).
 				for ( ; i < l; i++ ) {
 					node = fragment;
-
+					
+					// 不是最后一个
 					if ( i !== iNoClone ) {
+						/*
+						① 一个 jQuery 对象可能包含多个节点，为了保证每个节点都有碎片内容可用，这里需要克隆出 this.length 个碎片
+						② 这里不光克隆碎片节点，连碎片节点的事件，缓存数据等都复制
+						③ 碎片节点多次插入文档，script 脚本也是节点元素，多次执行也是应该的，所以下面有多份 script 元素
+						*/
 						node = jQuery.clone( node, true, true );
 
 						// Keep references to cloned scripts for later restoration
@@ -10651,26 +10735,41 @@ jQuery.fn.extend({
 							jQuery.merge( scripts, getAll( node, "script" ) );
 						}
 					}
-
+					// 用第二个函数参数来处理获取的文档碎片 node
 					callback.call( this[ i ], node, i );
 				}
 
 				if ( hasScripts ) {
 					doc = scripts[ scripts.length - 1 ].ownerDocument;
 
-					// Reenable scripts
+					// Reenable scripts，解除脚本禁用
 					jQuery.map( scripts, restoreScript );
 
 					// Evaluate executable scripts on first document insertion
 					for ( i = 0; i < hasScripts; i++ ) {
 						node = scripts[ i ];
+						/*
+						① rscriptType = /^$|\/(?:java|ecma)script/i
+						   type="text/javascript" 或 type="text/ecmascript" 或没有 type 的 script 标签可执行
+						② data_priv.access( node, "globalEval" ) 为 true 表示脚本执行过了
+						③ jQuery.contains( doc, node ) 为 true 表示 node 真正插入 doc 文档了
+						*/
 						if ( rscriptType.test( node.type || "" ) &&
 							!data_priv.access( node, "globalEval" ) && jQuery.contains( doc, node ) ) {
 
 							if ( node.src ) {
 								// Hope ajax is available...
+								// 通过 jQuery.ajax 方法发起 get 类型的 http 请求
 								jQuery._evalUrl( node.src );
 							} else {
+								/*
+								① globalEval 表示全局解析 script 脚本里的代码
+								② rcleanScript = /^\s*<!(?:\[CDATA\[|--)|(?:\]\]|--)>\s*$/g
+								   剔除掉 html 注释
+
+								   rcleanScript.exec('<!--  -->')
+								   -> rcleanScript.exec('<!--  -->')
+								*/
 								jQuery.globalEval( node.textContent.replace( rcleanScript, "" ) );
 							}
 						}
@@ -10764,7 +10863,25 @@ jQuery.extend({
 	elems 为数组或类数组
 	context 为上下文
 	scripts 为布尔值或数组
-	selection 可选/类数组
+	selection 要么为 false，要么为 jQuery 对象（this）
+
+	简单的看一下这个方法，就是创建一个文档碎片：
+	buildFragment: function( elems, context, scripts, selection ) {
+		var fragment = context.createDocumentFragment();
+		// 第一步： 分解类型，jQuery对象，节点对象，文本，需要包装的元素等，分别加入 nodes 数组
+		if ( jQuery.type( elem ) === "object" ) {
+            jQuery.merge( nodes, elem.nodeType ? [ elem ] : elem );
+        } else if ( !rhtml.test( elem ) ) {
+            nodes.push( context.createTextNode( elem ) );
+        } else {
+            jQuery.merge( nodes, tmp.childNodes )
+        }
+		// 第二步，分别把 nodes 中的元素加入 fragment
+		while ( (elem = nodes[ i++ ]) ) {
+			fragment.appendChild( elem );
+		}
+		return fragment;
+	};
 	*/
 	buildFragment: function( elems, context, scripts, selection ) {
 		var elem, tmp, tag, wrap, contains, j,
@@ -10907,26 +11024,29 @@ jQuery.extend({
 				continue;
 			}
 
+			// 判断 elem 是否已经在 document 文档当中
 			contains = jQuery.contains( elem.ownerDocument, elem );
 
 			// Append to fragment
 			/*
 			① appendChild 方法返回被添加的节点
-			② getAll 返回指定元素（参数 1）下的标签名为参数 2 的子元素
+			② getAll 返回指定元素（参数 1）中标签名为参数 2 的子元素组成的数组
 			③ 获取 elem 中的 script 元素
 			*/
 			tmp = getAll( fragment.appendChild( elem ), "script" );
 
 			// Preserve script evaluation history
 			/*
-			setGlobalEval 会依次给 tmp 中每一个元素加一个 "globalEval" 属性：
-			for 循环: data_priv.set(elems[ i ], "globalEval",true)
+			① setGlobalEval 会依次给 tmp 中每一个元素加一个 "globalEval" 属性：
+			   for 循环: data_priv.set(elems[ i ], "globalEval",true)
+			② contains 为 true，表示 elem 是否已经在 document 文档当中，那么就表示脚本执行过了
 			*/
 			if ( contains ) {
 				setGlobalEval( tmp );
 			}
 
 			// Capture executables
+			// domManip 方法调用 buildFragment 方法时，scripts 为 false，以下就没什么事了
 			if ( scripts ) {
 				j = 0;
 				/*
@@ -11007,10 +11127,44 @@ function manipulationTarget( elem, content ) {
 }
 
 // Replace/restore the type attribute of script elements for safe DOM manipulation
+/*
+假如有两个脚本标签：
+<script type="text/javascript" src="js/jquery-2.0.3.js"></script>
+<script></script>
+
+s1 = document.getElementsByTagName('script')[0];
+s2 = document.getElementsByTagName('script')[1]
+
+disableScript(s1)
+-> <script type="true/text/javascript" src="js/jquery-2.0.3.js"></script>
+disableScript(s2)
+-> <script type="false/"></script>
+
+这样脚本就不会执行了。举个例子：
+脚本①：<script>alert(1)</script>
+脚本②：<script type="false/">alert(1)</script>
+
+脚本①会弹出 1，脚本②不会。
+
+脚本③：<script type="text/javascript" src="js/jquery-2.0.3.js"></script>
+脚本④：<script type="true/text/javascript" src="js/jquery-2.0.3.js"></script>
+
+脚本③会加载 js/jquery-2.0.3.js，脚本④不会
+*/
 function disableScript( elem ) {
 	elem.type = (elem.getAttribute("type") !== null) + "/" + elem.type;
 	return elem;
 }
+/*
+rscriptTypeMasked = /^true\/(.*)/
+
+rscriptTypeMasked.exec("text/javascript") 
+-> null
+rscriptTypeMasked.exec("true/text/javascript")  
+->  ["true/text/javascript", "text/javascript", index: 0, input: "true/text/javascript"]
+
+restoreScript 方法解除脚本的禁用状态
+*/
 function restoreScript( elem ) {
 	var match = rscriptTypeMasked.exec( elem.type );
 
