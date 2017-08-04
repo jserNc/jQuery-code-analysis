@@ -8330,11 +8330,11 @@ jQuery.event = {
 			}
             /*
             总结一下：
-            如果 type 这个事件从没出现过时，把eventHandle函数通过addEventListener注册到元素上。
-            如果已经有handlers，那么说明eventHandle已经注册过，无需再次注册，
-            把含有事件处理函数的对象handleObj推入到数组即可。
+            如果 type 这个事件从没出现过时，把 eventHandle 函数通过 addEventListener 注册到元素上。
+            如果已经有 handlers，那么说明 eventHandle 已经注册过，无需再次注册，
+            把含有事件处理函数的对象 handleObj 推入到数组即可。
             
-            每次绑定的核心就是把handleObj对象添加到事件类型type对应的events[type]上。
+            每次绑定的核心就是把 handleObj 对象添加到事件类型 type 对应的 events[type] 上。
             */
 
 			// Keep track of which events have ever been used, for event optimization
@@ -10608,15 +10608,41 @@ jQuery.fn.extend({
 		return this;
 	},
 
+    // 元素节点复制，可复制元素节点相关的缓存数据（事件，用户自定义数据等）
 	clone: function( dataAndEvents, deepDataAndEvents ) {
 		dataAndEvents = dataAndEvents == null ? false : dataAndEvents;
 		deepDataAndEvents = deepDataAndEvents == null ? dataAndEvents : deepDataAndEvents;
 
+        // 从 this 这一组元素克隆出另一组元素
 		return this.map( function () {
+            /*
+            这里的 this 是外层 this 代表的一组元素中的一个，相当于 this[i]，其中：
+            ① dataAndEvents 表示是否复制 this[i] 的缓存数据
+            ② deepDataAndEvents 表示是否复制 this[i] 的子节点缓存数据
+             */
 			return jQuery.clone( this, dataAndEvents, deepDataAndEvents );
 		});
 	},
 
+    /*
+    对于 jQuery.access 方法（梳理一下该方法内部执行流程）:
+    (1) value == undefined
+    ① key == null -> bulk = true;
+    ② value == undefined（没传参） -> arguments.length = 0（假），即 chainable 为假
+       -> fn.call(elems)
+       -> this[ 0 ].innerHTML;
+       也就是说：$('p').html() 相当于 $('p')[ 0 ].innerHTML
+
+    (2) value !== undefined
+    ① key == null -> bulk = true;
+    ② value !== undefined（一定传参） -> chainable = true
+       a. value 不是 function -> raw = true 
+          -> fn.call( elems, value )
+       b. value 是 function -> raw = undefined（没传参）-> bulk = fn
+          -> fn = function( elem, key, value ) {
+                  return bulk.call( jQuery( elem ), value );
+              };
+    */
 	html: function( value ) {
 		return jQuery.access( this, function( value ) {
 			var elem = this[ 0 ] || {},
@@ -10628,9 +10654,41 @@ jQuery.fn.extend({
 			}
 
 			// See if we can take a shortcut and just use innerHTML
+            /*
+            ① rnoInnerhtml = /<(?:script|style|link)/i
+            ② rtagName = /<([\w:]+)/ 
+                a. \w 字母数字或下划线或汉字，不包括 < 和 > 这种符号
+                b. [\w:] 表示 \w 或 : 
+                    也就是说，字母数字或下划线或汉字或:
+                    
+                eg：
+                rtagName.exec('<div') -> ["<div", "div", index: 0, input: "<div"]
+                rtagName.exec('<div>') ->  ["<div", "div", index: 0, input: "<div>"]
+                rtagName.exec('<div><span') -> ["<div", "div", index: 0, input: "<div><span"]
+
+                注意这里的正则没有全局 g 匹配，所以只会取第一个标签
+
+                下面的 tag 就是匹配出来的元素标签名
+            ③ 匹配出来的标签名不能在 wrapMap 对象中
+             */
 			if ( typeof value === "string" && !rnoInnerhtml.test( value ) &&
 				!wrapMap[ ( rtagName.exec( value ) || [ "", "" ] )[ 1 ].toLowerCase() ] ) {
+                /*
+                (1) rxhtmlTag = /<(?!area|br|col|embed|hr|img|input|link|meta|param)(([\w:]+)[^>]*)\/>/gi
+                    匹配没有闭合的标签
 
+                    ① (?!exp) 匹配后面跟的不是exp的位置
+                    ② br、img、input 等本来就不闭合的标签除外
+                    ③ rxhtmlTag.exec('<span />') -> ["<span />", "span ", "span", index: 0, input: "<span />"]
+                    ④ <span></span> 等闭合标签不会通过匹配 rxhtmlTag.exec('<span></span>') -> null
+
+                (2) elem.replace( rxhtmlTag, "<$1></$2>" )
+                    用第二个参数替换第一个参数
+
+                    ① 如果第二个参数是字符串，其中的 $1、$2 分别表示 rxhtmlTag 中第 1、2 个子表达式内容
+                    ② 这个替换起到闭合标签的作用 <span /> -> <span ></span>
+                (3) 以下这句起到闭合标签的作用
+                 */
 				value = value.replace( rxhtmlTag, "<$1></$2>" );
 
 				try {
@@ -10639,6 +10697,7 @@ jQuery.fn.extend({
 
 						// Remove element nodes and prevent memory leaks
 						if ( elem.nodeType === 1 ) {
+                            // 删除元素上的缓存数据（绑定的事件，用户添加的数据等等）
 							jQuery.cleanData( getAll( elem, false ) );
 							elem.innerHTML = value;
 						}
@@ -10650,15 +10709,22 @@ jQuery.fn.extend({
 				} catch( e ) {}
 			}
 
+            // 如果进入了上面的 if，那么 elem 就为 0 了，就不会走这里
 			if ( elem ) {
 				this.empty().append( value );
 			}
 		}, null, value, arguments.length );
 	},
 
+    // 元素替换
 	replaceWith: function() {
 		var
 			// Snapshot the DOM in case .domManip sweeps something relevant into its fragment
+            /*
+            ① elem -> [ elem.nextSibling, elem.parentNode ]
+            ② map 方法最后一句：return concat.apply( [], ret )
+            ③ 所以，args 是一维数组
+             */ 
 			args = jQuery.map( this, function( elem ) {
 				return [ elem.nextSibling, elem.parentNode ];
 			}),
@@ -10666,24 +10732,34 @@ jQuery.fn.extend({
 
 		// Make the changes, replacing each context element with the new content
 		this.domManip( arguments, function( elem ) {
+            /*
+            ① elem 表示处理 arguments 后得到的文档碎片
+            ② 内部的 this 是外部 this 代表的一组元素中的一个 this[i]
+            ③ domManip 方法的第二个参数（就是这个函数）会执行 this.length 遍，所以 i 会一直增加的
+             */
 			var next = args[ i++ ],
 				parent = args[ i++ ];
 
 			if ( parent ) {
 				// Don't use the snapshot next if it has moved (#13810)
+                // 这个函数循环执行过程中会删除一些节点，如果刚好把 args 中某个节点删除了，这里修正一下兄弟节点
 				if ( next && next.parentNode !== parent ) {
 					next = this.nextSibling;
 				}
+                // 删除本节点
 				jQuery( this ).remove();
+                // 插入新节点
 				parent.insertBefore( elem, next );
 			}
 		// Allow new content to include elements from the context set
 		}, true );
 
 		// Force removal if there was no new content (e.g., from empty arguments)
+        // 返回当前 jQuery 对象本身(虽然其匹配的元素已从文档中被移除)。
 		return i ? this : this.remove();
 	},
 
+    // 跟 remove 函数基本一样，只不过 remove 会默认删除缓存数据，这里是不删除缓存数据
 	detach: function( selector ) {
 		return this.remove( selector, true );
 	},
@@ -10856,10 +10932,15 @@ jQuery.fn.extend({
 });
 
 jQuery.each({
+    // 当前元素插入到选择器匹配的每一个元素内部末尾
 	appendTo: "append",
+    // 当前元素插入到选择器匹配的每一个元素内部开头
 	prependTo: "prepend",
+    // 当前元素插入到选择器匹配的每一个元素前面
 	insertBefore: "before",
+    // 当前元素插入到选择器匹配的每一个元素后面
 	insertAfter: "after",
+    // 当前元素替换掉所有的匹配元素
 	replaceAll: "replaceWith"
 }, function( name, original ) {
 	jQuery.fn[ name ] = function( selector ) {
@@ -10870,14 +10951,32 @@ jQuery.each({
 			i = 0;
 
 		for ( ; i <= last; i++ ) {
-			elems = i === last ? this : this.clone( true );
+			elems = i === last ? this : this.clone( true );           
+            //eg: jQuery( insert[ i ] ).append( elems )
 			jQuery( insert[ i ] )[ original ]( elems );
 
 			// Support: QtWebKit
 			// .get() because core_push.apply(_, arraylike) throws
+            /*
+            elems.get() 获得 elem 这个 jQuery 对象的所有原生节点组成的数组
+             */
 			core_push.apply( ret, elems.get() );
 		}
 
+        /*
+        看一下 pushStack 方法：
+        jQuery.fn.pushStack : function ( elems ) {
+            // 新建一个 jQuery 对象
+            var ret = jQuery.merge( this.constructor(), elems );
+
+            // 原来的 this 入栈
+            ret.prevObject = this;
+            ret.context = this.context;
+
+            // 返回新建的 jQuery 对象
+            return ret;
+        }
+         */
 		return this.pushStack( ret );
 	};
 });
@@ -11230,6 +11329,7 @@ jQuery.extend({
 		}
 	},
 
+    // get 方式的 ajax 请求
 	_evalUrl: function( url ) {
 		return jQuery.ajax({
 			url: url,
