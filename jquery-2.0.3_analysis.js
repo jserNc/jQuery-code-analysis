@@ -1550,7 +1550,7 @@ jQuery.extend({
 	// Multifunctional method to get and set values of a collection
 	// The value/s can optionally be executed if it's a function
     /*
-	access 方法作用：设置/获取属性值，被 css、attr、text 等方法调用完成不同的具体功能
+	access 方法作用：set/get 属性值，被 css、attr、text 等方法调用完成不同的具体功能
 
 	以 attr 方法为例：
 	attr: function( name, value ) {
@@ -1560,7 +1560,9 @@ jQuery.extend({
 	② fn 指函数，如 jQuery.attr
 	③ key 指属性名，如 title
 	④ value 指属性值，如 'str'
-	⑤ chainable 为 true 表示设置属性，为 false 表示获取属性
+	⑤ chainable 是否链式执行。
+	   a. true 表示 set 属性，返回当前对象，需要链式执行
+	   b. false 表示 get 属性，一般返回字符串，数字等基本类型，不能链式执行
 	⑥ emptyGet, raw 等没传的参数都是 undefined
      */
     access: function( elems, fn, key, value, chainable, emptyGet, raw ) {
@@ -1647,7 +1649,7 @@ jQuery.extend({
 		② chainable 为【假】
 		   a. bulk 为【真】，说明是没有 key 值，执行 fn.call( elems )
 		   b. bulk 为【假】，说明有 key 值
-		      如果当前 jQuery 对象有长度，返回  ( elems[0], key )，逗号表达式，结果为 key
+		      如果当前 jQuery 对象有长度，第一个元素上执行 fn( elems[0], key )
 			  如果当前 jQuery 对象没有长度，返回 emptyGet
 		*/
 		return chainable ?
@@ -1656,7 +1658,7 @@ jQuery.extend({
 			// Gets
 			bulk ?
 				fn.call( elems ) :
-				length ?    ( elems[0], key ) : emptyGet;
+				length ? fn( elems[0], key ) : emptyGet;
 	},
 
     // 当前时间
@@ -5484,8 +5486,8 @@ jQuery.support = (function( support ) {
 
 /*
 ① attr 不合适设置大量数据
-$.('#div1').attr('name','hello');
-$.('#div1').attr('name')  // hello
+$('#div1').attr('name','hello');
+$('#div1').attr('name')  // hello
 
 相当于：
 
@@ -5493,8 +5495,8 @@ document.getElemntById('div1').setAttribute('name','hello');
 document.getElemntById('div1').getAttribute('name'); // hello
 
 ② prop 不适合设置大量数据
-$.('#div1').prop('name','hello');
-$.('#div1').prop('name')  // hello
+$('#div1').prop('name','hello');
+$('#div1').prop('name')  // hello
 
 相当于：
 
@@ -5502,8 +5504,8 @@ document.getElemntById('div1').name = 'hello';
 document.getElemntById('div1').name;  // hello
 
 ③ data 可以设置大量数据
-$.('#div1').data('name','hello');
-$.('#div1').data('name')  // hello
+$('#div1').data('name','hello');
+$('#div1').data('name')  // hello
 
 ④ 内存泄漏
 不用的内存应该回收，如果不用的变量不回收，就会导致内存泄漏。
@@ -5665,14 +5667,18 @@ Data.accepts = function( owner ) {
 	//    - Any
 	return owner.nodeType ?
 		owner.nodeType === 1 || owner.nodeType === 9 : true;
-    // ① 如果有 nodeType 属性，nodeType 是 1 或 9，就返回 true，否则返回 false；
-    // ② 如果没有 nodeType 属性，直接返回 true。
+	/*
+	 ① 如果有 nodeType 属性，nodeType 是 1 或 9，就返回 true，否则返回 false；
+     ② 如果没有 nodeType 属性，直接返回 true。
+	*/
 };
 
 Data.prototype = {
-    // 返回 owner 节点在 cache 中对于的属性名
-    // 如节点 node1 对应 cache 的属性 1，即 cache[1]
-    // 如果 cache[1] 已经存在，那么再次给 node1 添加数据，就不会再创建新的 cache 属性了，直接在 cache[1] 下添加即可
+	/*
+	作用：返回 owner 节点在 cache 中对于的属性名
+    ① 如果节点 node1 对应 cache 的属性 1，即 cache[1]
+    ② 如果 cache[1] 已经存在，那么再次给 node1 添加数据，就不会再创建新的 cache 属性了，直接在 cache[1] 下添加即可
+	*/
 	key: function( owner ) {
 		// We can accept data for non-element nodes in modern browsers,
 		// but we should not, see #8335.
@@ -10451,7 +10457,32 @@ rapMap = {
 
 jQuery.fn.extend({
 	/*
-	① 参数为空，value 为 undefined，
+	对于 jQuery.access 方法（梳理一下该方法内部执行流程）:
+	(1) value == undefined
+	① key == null -> bulk = true;
+	② value == undefined（没传参） -> arguments.length = 0（假），即 chainable 为假
+	   -> fn.call(elems)
+	   -> jQuery.text( this )
+	 也就是说：$('p').text() 相当于 jQuery.text($('p'))
+
+	(2) value !== undefined
+	① key == null -> bulk = true;
+	② value !== undefined（一定传参） -> chainable = true
+	   a. value 不是 function -> raw = true 
+	      -> fn.call( elems, value )
+		  -> this.empty().append( ( this[ 0 ] && this[ 0 ].ownerDocument || document ).createTextNode( value ) )
+		  也就是说：$('p').text('更新的内容') -> 所有的 p 标签内容变为 “更新的内容”
+	   b. value 是 function -> raw = undefined（没传参）-> bulk = fn
+	      -> fn = function( elem, key, value ) {
+				  return bulk.call( jQuery( elem ), value );
+			  };
+		  -> for 循环：fn( elems[i], key, value.call( elems[i], i, fn( elems[i], key ) ) )
+		  -> for 循环：bulk.call( jQuery( elems[i] ), value.call( elems[i], i, fn( elems[i], key ) ) )
+		  -> 假设 val = value.call( elems[i], i, fn( elems[i], key ) )，以上相当于：
+		     bulk.call( jQuery( elems[i] ), val)
+		  -> for 循环：this[i].empty().append( ( this[i][ 0 ] && this[i][ 0 ].ownerDocument || document ).createTextNode( value ) );
+		     -> 还是依次给 this 的每个元素更新文本内容
+		  -> chainable = true，直接返回上面操作完的 this 对象
 	*/
 	text: function( value ) {
 		return jQuery.access( this, function( value ) {
@@ -10461,15 +10492,25 @@ jQuery.fn.extend({
 		}, null, value, arguments.length );
 	},
 
+	// 在元素内部末尾插入子节点
 	append: function() {
 		return this.domManip( arguments, function( elem ) {
+			// 	Element || document || DocumentFragment
 			if ( this.nodeType === 1 || this.nodeType === 11 || this.nodeType === 9 ) {
+				/*
+				① 如果 this 不是 table，那就不用修正，target 还是 this；
+				② 如果 this 是 table，elem 是 tr，那就修正 target 为 this 下的第一个 tbody
+
+				domManip 会执行：callback.call( this[ i ], node, i );
+				也就是说，这里的 elem 就是文档碎片 node
+				*/
 				var target = manipulationTarget( this, elem );
 				target.appendChild( elem );
 			}
 		});
 	},
 
+	// 在元素内部最前面插入子节点
 	prepend: function() {
 		return this.domManip( arguments, function( elem ) {
 			if ( this.nodeType === 1 || this.nodeType === 11 || this.nodeType === 9 ) {
@@ -10479,6 +10520,7 @@ jQuery.fn.extend({
 		});
 	},
 
+	// 在元素前面插入兄弟节点
 	before: function() {
 		return this.domManip( arguments, function( elem ) {
 			if ( this.parentNode ) {
@@ -10487,6 +10529,7 @@ jQuery.fn.extend({
 		});
 	},
 
+	// 在元素后面插入兄弟节点
 	after: function() {
 		return this.domManip( arguments, function( elem ) {
 			if ( this.parentNode ) {
@@ -10496,20 +10539,37 @@ jQuery.fn.extend({
 	},
 
 	// keepData is for internal use only--do not document
+	/*
+	作用：从文档中移除匹配的元素，同时移除与元素关联绑定的附加数据（data() 函数）和事件处理器等
+	selector ：选择器
+	keepData ：是否删除附加数据，默认删除
+	*/
 	remove: function( selector, keepData ) {
 		var elem,
+			/*
+			① 有选择器（有传入合理参数），删除 this 中选出匹配元素
+			② 没有选择器（没有传参），删除 this
+			*/
 			elems = selector ? jQuery.filter( selector, this ) : this,
 			i = 0;
 
 		for ( ; (elem = elems[i]) != null; i++ ) {
+			// keepData 为假，表示删除附加数据
 			if ( !keepData && elem.nodeType === 1 ) {
+				/*
+				① getAll( elem ) 获取 elem 及其所有子元素组成的数组
+				② jQuery.cleanData 删除元素上的缓存数据（绑定的事件，用户添加的数据等等）
+				*/
 				jQuery.cleanData( getAll( elem ) );
 			}
 
 			if ( elem.parentNode ) {
+				// jQuery.contains( elem.ownerDocument, elem ) 为 true 表示元素 elem 在文档 elem.ownerDocument 中
 				if ( keepData && jQuery.contains( elem.ownerDocument, elem ) ) {
+					// 标记 elem 中的 script 都执行过
 					setGlobalEval( getAll( elem, "script" ) );
 				}
+				// 从文档中移除 elem 元素
 				elem.parentNode.removeChild( elem );
 			}
 		}
@@ -10517,6 +10577,7 @@ jQuery.fn.extend({
 		return this;
 	},
 
+	// 清空元素内容
 	empty: function() {
 		var elem,
 			i = 0;
@@ -10528,6 +10589,18 @@ jQuery.fn.extend({
 				jQuery.cleanData( getAll( elem, false ) );
 
 				// Remove any remaining nodes
+				/*
+				清空元素内容
+
+				eg:
+				dom 元素如下：
+				console.log(ad)
+				-> <li id="ad" class="item"><div class="pic"><a href="http://fang.anjuke.com/loupan/?pi=2345-cnxh-feeds-xf-qita-shenghuo-cy1" data-li="item_a_18" onclick="T.dxwChannel.ajaxDsp(this,73,event)"><img width="100%" src="//img3.2345.com/eimg/201704/e06987a23463d5368ecc2b16626ab76d.jpg" alt=""></a></div><table class="cont"><tbody><tr><td><div class="title"><a href="http://fang.anjuke.com/loupan/?pi=2345-cnxh-feeds-xf-qita-shenghuo-cy1" data-li="item_a_18" onclick="T.dxwChannel.ajaxDsp(this,73,event)">[dsp]5月新开楼盘，户型好 交通便利 首付低！</a></div><div class="extra"><span class="cate">广告</span><span class="from">[dsp]安居客新房</span></div></td></tr></tbody></table></li>
+				
+				ad.textContent = ""
+				console.log(ad)
+				-> <li id="ad" class="item"></li>
+				*/
 				elem.textContent = "";
 			}
 		}
@@ -10810,31 +10883,51 @@ jQuery.each({
 });
 
 jQuery.extend({
+	/*
+	作用：克隆当前匹配元素集合的一个副本，并以 jQuery 对象的形式返回
+	dataAndEvents：是否同时复制元素的附加数据和绑定事件，默认为 false
+	deepDataAndEvents：是否同时复制元素的所有子元素的附加数据和绑定事件，默认值即为参数 withDataAndEvents的值。
+	*/
 	clone: function( elem, dataAndEvents, deepDataAndEvents ) {
 		var i, l, srcElements, destElements,
+			// 该方法将复制并返回调用它的节点的副本。如果传递给它的参数是 true，它还将递归复制当前节点的所有子孙节点。否则，它只复制当前节点。
 			clone = elem.cloneNode( true ),
+			// elem 是否已经在文档中
 			inPage = jQuery.contains( elem.ownerDocument, elem );
 
 		// Support: IE >= 9
 		// Fix Cloning issues
+		/*
+		① 不支持单选框复选框状态复制（!jQuery.support.noCloneChecked），这里手工修正
+		② 支持选中状态复制的就没必要走这一步了，clone 的时候就已经把选中状态复制过去了
+		*/
 		if ( !jQuery.support.noCloneChecked && ( elem.nodeType === 1 || elem.nodeType === 11 ) && !jQuery.isXMLDoc( elem ) ) {
 
 			// We eschew Sizzle here for performance reasons: http://jsperf.com/getall-vs-sizzle/2
+			// getAll 方法获得元素自身和所有的子元素
 			destElements = getAll( clone );
 			srcElements = getAll( elem );
 
 			for ( i = 0, l = srcElements.length; i < l; i++ ) {
+				// 当元素是单选框/复选框的时候，将源节点的选中状态赋值给目标节点
 				fixInput( srcElements[ i ], destElements[ i ] );
 			}
 		}
 
 		// Copy the events from the original to the clone
+		// 复制元素的附加数据和绑定事件
 		if ( dataAndEvents ) {
+			// 同时复制元素的所有子元素的附加数据和绑定事件
 			if ( deepDataAndEvents ) {
+				/*
+				① 大多数浏览器支持单选复选框状态复制，不走上面的 if 块，srcElements、destElements 在这里初始化
+				② 剩余的少数浏览器，这里取上面 if 块修正过的 srcElements、destElements
+				*/
 				srcElements = srcElements || getAll( elem );
 				destElements = destElements || getAll( clone );
 
 				for ( i = 0, l = srcElements.length; i < l; i++ ) {
+					// 依次复制附加数据和绑定事件
 					cloneCopyEvent( srcElements[ i ], destElements[ i ] );
 				}
 			} else {
@@ -10843,8 +10936,16 @@ jQuery.extend({
 		}
 
 		// Preserve script evaluation history
+		// 保存脚本历史执行记录
 		destElements = getAll( clone, "script" );
 		if ( destElements.length > 0 ) {
+			/*
+			① inPage 为 true，表示 elem 已经在文档中，对 destElements 中每个 script 标记为 false
+			   data_priv.set(destElements[ i ], "globalEval", false) 表示脚本都执行过
+			② inPage 为 false，elem 不在文档中，它下面的脚本有的执行过，有的没执行过
+			   setGlobalEval( destElements, getAll( elem, "script" ) )
+			   将 elem 中每个脚本是否执行过的标记复制过去
+			*/
 			setGlobalEval( destElements, !inPage && getAll( elem, "script" ) );
 		}
 
@@ -11070,28 +11171,53 @@ jQuery.extend({
 		return fragment;
 	},
 
+	// 删除元素上的缓存数据（绑定的事件，用户添加的数据等等）
 	cleanData: function( elems ) {
 		var data, elem, events, type, key, j,
 			special = jQuery.event.special,
 			i = 0;
 
 		for ( ; (elem = elems[ i ]) !== undefined; i++ ) {
+			/*
+			① 如果是文档节点，只有 nodeType 是 1 或 9，返回 true
+			② 如果是普通对象，都返回 true
+			*/
 			if ( Data.accepts( elem ) ) {
+				/*
+				① 每个 Data() 构造函数里有一句：this.expando = jQuery.expando + Math.random();
+				   所以，每一个 Data 实例都有一个固定的 expando 属性
+				② data_priv = new Data(); 所以 data_priv 也有 expando 属性
+				③ elem[ data_priv.expando ] 是 1,2,3...这种自然数
+				④ data_priv.cache[ elem[ data_priv.expando ] ] 就是 elem 的私有缓存数据
+				*/
 				key = elem[ data_priv.expando ];
 
 				if ( key && (data = data_priv.cache[ key ]) ) {
+					/*
+					① Object.keys() 方法会返回一个由一个给定对象的自身可枚举属性组成的数组，
+					数组中属性名的排列顺序和使用 for...in 循环遍历该对象时返回的顺序一致 
+					（两者的主要区别是 一个 for-in 循环还会枚举其原型链上的属性）。
+					② data.events : {
+							click : [handleObj,handleObj,handleObj,...]
+							mouseover : [handleObj,handleObj,handleObj,...]
+							mousedown : [handleObj,handleObj,handleObj,...]
+					   }
+					*/
 					events = Object.keys( data.events || {} );
 					if ( events.length ) {
 						for ( j = 0; (type = events[j]) !== undefined; j++ ) {
+							// 特殊事件，用 jQuery.event.remove 方法移除，开销较大
 							if ( special[ type ] ) {
 								jQuery.event.remove( elem, type );
 
 							// This is a shortcut to avoid jQuery.event.remove's overhead
+							// 一般的，用 jQuery.removeEvent 调用原生的 removeEventListener 方法移除事件
 							} else {
 								jQuery.removeEvent( elem, type, data.handle );
 							}
 						}
 					}
+					// 元素 elem 对应的【私有数据】都删除
 					if ( data_priv.cache[ key ] ) {
 						// Discard any remaining `private` data
 						delete data_priv.cache[ key ];
@@ -11099,6 +11225,7 @@ jQuery.extend({
 				}
 			}
 			// Discard any remaining `user` data
+			// 元素 elem 对应的【用户添加的数据】都删除
 			delete data_user.cache[ elem[ data_user.expando ] ];
 		}
 	},
@@ -11117,7 +11244,19 @@ jQuery.extend({
 
 // Support: 1.x compatibility
 // Manipulating tables requires a tbody
+/*
+作用：修正目标元素
+① 一般情况下不用修正，直接返回 elem
+② 如果元素 elem 是 table，并且 content 是 tr，返回 tbody
+*/
 function manipulationTarget( elem, content ) {
+	/*
+	注意运算符优先级：
+	&& 高于 || 高于 ? :
+	
+	① 如果元素 elem 的 nodeName 为 table，并且 content 元素为 tr，返回 elem 下第一个 tbody 元素（没有就创建一个）
+	③ 否则，直接返回 elem
+	*/
 	return jQuery.nodeName( elem, "table" ) &&
 		jQuery.nodeName( content.nodeType === 1 ? content : content.firstChild, "tr" ) ?
 
@@ -11188,9 +11327,11 @@ function setGlobalEval( elems, refElements ) {
 		!refElements || data_priv.get( refElements[ i ], "globalEval" )
 		① 如果没有参数 refElements，以上表达式为 true
 		② 如果 refElements[ i ] 存有属性 "globalEval"，以上表达式也为 true
-
+		
 		以上两种情况下，相当于：
 		data_priv.set(elems[ i ], "globalEval",true)
+
+		③ 如果有参考元素 refElements，依次将 refElements[ i ] 的执行状态赋值给 elems[ i ]
 		*/
 		data_priv.set(
 			elems[ i ], "globalEval", !refElements || data_priv.get( refElements[ i ], "globalEval" )
@@ -11198,17 +11339,23 @@ function setGlobalEval( elems, refElements ) {
 	}
 }
 
+// 复制附加数据和绑定事件
 function cloneCopyEvent( src, dest ) {
 	var i, l, type, pdataOld, pdataCur, udataOld, udataCur, events;
 
+	// 如果目标不是 Element，直接返回
 	if ( dest.nodeType !== 1 ) {
 		return;
 	}
 
 	// 1. Copy private data: events, handlers, etc.
+	// 如果有私有的缓存数据（events, handlers 等）
 	if ( data_priv.hasData( src ) ) {
+		// 获取 src 的私有数据
 		pdataOld = data_priv.access( src );
+		// 将 src 的私有数据依次复制给 dest
 		pdataCur = data_priv.set( dest, pdataOld );
+		// 事件是比较特殊的私有数据，直接复制过去还不行，还需要重新绑定事件
 		events = pdataOld.events;
 
 		if ( events ) {
@@ -11217,6 +11364,7 @@ function cloneCopyEvent( src, dest ) {
 
 			for ( type in events ) {
 				for ( i = 0, l = events[ type ].length; i < l; i++ ) {
+					// 依次把事件绑定到目标元素上
 					jQuery.event.add( dest, type, events[ type ][ i ] );
 				}
 			}
@@ -11224,10 +11372,12 @@ function cloneCopyEvent( src, dest ) {
 	}
 
 	// 2. Copy user data
+	// 如果有自己添加的缓存数据
 	if ( data_user.hasData( src ) ) {
 		udataOld = data_user.access( src );
+		// 为什么要先把缓存数据给一个中间变量呢？难道是因为这里的数据可以被用户更改，保险起见！
 		udataCur = jQuery.extend( {}, udataOld );
-
+		// 将源节点的数据赋值给目标节点
 		data_user.set( dest, udataCur );
 	}
 }
@@ -11242,7 +11392,7 @@ function getAll( context, tag ) {
 
 	/*
 	&&　优先级高于　||
-	① 没有 tag 参数或 context 的 nodeName 就是 tag，这时 ret 为 []，所以返回的是数组 [ context ]
+	① 没有 tag 参数或 context 的 nodeName 就是 tag，这时 ret 为 [context 所有子节点组成的数组]，所以返回的是数组 [ context, 所有子节点 ]
 	② 有 tag 参数，返回的是 context 中标签名为 tag 的子元素组成的数组 [node1,node2,...]
 	*/
 	return tag === undefined || tag && jQuery.nodeName( context, tag ) ?
@@ -11251,14 +11401,22 @@ function getAll( context, tag ) {
 }
 
 // Support: IE >= 9
+// 将单选框或复选框的值复值过去，克隆 clone 节点的时候调用这个方法
 function fixInput( src, dest ) {
 	var nodeName = dest.nodeName.toLowerCase();
 
 	// Fails to persist the checked state of a cloned checkbox or radio button.
+	/*
+	① manipulation_rcheckableType = /^(?:checkbox|radio)$/i 匹配单选框或复选框
+	② 强制将源节点的选中状态赋值给目标节点
+	*/
 	if ( nodeName === "input" && manipulation_rcheckableType.test( src.type ) ) {
 		dest.checked = src.checked;
 
 	// Fails to return the selected option to the default selected state when cloning options
+	/*
+	不会复制某些表单元素的动态，例如用户在 <textarea> 输入的内容、用户在<select>中选择的选项。
+	*/
 	} else if ( nodeName === "input" || nodeName === "textarea" ) {
 		dest.defaultValue = src.defaultValue;
 	}
