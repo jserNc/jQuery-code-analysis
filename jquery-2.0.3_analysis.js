@@ -1768,20 +1768,22 @@ function isArraylike( obj ) {
 		return false;
 	}
 
-    // 什么变量有 nodeType 属性，还有 length 属性不为空呢?
+    // dom 元素一般没有 length 属性，一旦有了 length 属性，那么这个 dom 元素也是类数组了
 	if ( obj.nodeType === 1 && length ) {
 		return true;
 	}
 
-    // 真数组返回 true
-    // 带 length 属性的函数不算
+
+    /*
+    ① 真数组返回 true
+    ② 带 length 属性的函数排除掉
+    ③ ( length === 0 || typeof length === "number" && length > 0 && ( length - 1 ) in obj );
+        本来想简写为：typeof length === "number" && length >= 0 && ( length - 1 ) in obj )
+        只不过，0 - 1 = -1，(-1 in obj) 不满足，所以，这里得单独把 length === 0 拿出来
+     */
 	return type === "array" || type !== "function" &&
 		( length === 0 ||
 		typeof length === "number" && length > 0 && ( length - 1 ) in obj );
-
-        // ( length === 0 || typeof length === "number" && length > 0 && ( length - 1 ) in obj );
-        // 本来想简写为：typeof length === "number" && length >= 0 && ( length - 1 ) in obj )
-        // 只不过，0 - 1，-1 in obj 不满足，所以，这里得单独把 length === 0 拿出来
 }
 
 // All jQuery objects should point back to these
@@ -4081,24 +4083,23 @@ jQuery.contains = Sizzle.contains;
 var optionsCache = {};
 
 // Convert String-formatted options into Object-formatted ones and store in cache
-/*
-// 匹配任意不是空白的字符
-core_rnotwhite = /\S+/g
-
-'once memory'.match(/\S+/g) -> ["once", "memory"]  match 的正则参数如果是全局匹配，返回的数组就像这样很简单的
-
-$.each(arr, function(i, value){
-    // i 是 key 'name', 'age' ...
-    // value 是元素 'hello', 20 ...
-    // code
-    return false;
-});
- */
 function createOptions( options ) {
     // 假如 options 为 'once memory'
     // 注意这种写法：object = optionsCache[ options ] = {}
     // object 和 optionsCache[ options ] 指向同一个对象，当 object 对这个对象进行修改，也会反应在 optionsCache[ options ] 上
 	var object = optionsCache[ options ] = {};
+    /*
+    core_rnotwhite = /\S+/g 匹配任意不是空白的字符
+
+    'once memory'.match(/\S+/g) -> ["once", "memory"]  match 的正则参数如果是全局匹配，返回的数组就像这样很简单的
+
+    $.each(arr, function(i, value){
+        // i 是 key 'name', 'age' ...
+        // value 是元素 'hello', 20 ...
+        // code
+        return false;
+    });
+     */
 	jQuery.each( options.match( core_rnotwhite ) || [], function( _, flag ) {
         // 修改 object 相当于也修改了 optionsCache[ options ]
 		object[ flag ] = true;
@@ -4243,14 +4244,15 @@ jQuery.Callbacks = function( options ) {
 
 	// Convert options from String-formatted to Object-formatted if needed
 	// (we check in cache first)
+    // Convert String-formatted options into Object-formatted ones and store in cache// 
     /*
-    ① 如果参数 options 不是字符串，也就是不写，即 undefined，那 options = jQuery.extend( {}, options )，即 {}
+    ① 如果参数 options 不是字符串，比如对象字面量形式，那 options = jQuery.extend( {}, options )
 
     ② 如果参数 options 是字符串，如 'once memory'
 
     var optionsCache = {};
 
-    // Convert String-formatted options into Object-formatted ones and store in cache
+    
     function createOptions( options ) {
         var object = optionsCache[ options ] = {};
         jQuery.each( options.match( core_rnotwhite ) || [], function( _, flag ) {
@@ -4306,7 +4308,12 @@ jQuery.Callbacks = function( options ) {
             // 标记正在执行回调队列
 			firing = true;
 			for ( ; list && firingIndex < firingLength; firingIndex++ ) {
-                // 如果配置了 stopOnFalse 参数，当有一个回调函数返回 false，就终止循环
+                /*
+                ① 如果配置了 stopOnFalse 参数，当有一个回调函数返回 false，就终止循环
+                ② list[ firingIndex ].apply( data[ 0 ], data[ 1 ] ) === false 
+                   这句除了是个判断条件，也实实在在地依次执行了 list 队列里的函数
+                ③ 这里把所有函数的执行上下文都绑定为 data[0]，也就是下面拥有多个 api 方法的 self 对象
+                 */ 
 				if ( list[ firingIndex ].apply( data[ 0 ], data[ 1 ] ) === false && options.stopOnFalse ) {
 					// 阻止将来由 add 方法添加的回调
                     memory = false; // To prevent further calls using add
@@ -4324,12 +4331,32 @@ jQuery.Callbacks = function( options ) {
                 // 回调队列执行过程中，调用 self.fire(arg) 方法，新的参数会存在 stack 中
                 // 依次用 stack 中的值，作为参数来执行回调队列
                 // 如 stack = [[context,arg1],[context,arg2],...]
+                /*
+                针对的是情况是 fireWith 方法中提到的例子，函数 fn1 中又调用 fire 方法
+                 */
 				if ( stack ) {
 					if ( stack.length ) {
 						fire( stack.shift() );
 					}
-                // 这里 stack 为 false，说明配置了 once 参数
-                // 那么，有记忆模式（memory 参数），清空队列，但是之后用 cb.add(fn) 还是可以执行 fn 的
+                /*
+                首先，这里 stack 为 false，说明配置了 once 参数
+                其实，这里针对的是 $.callbacks('once memory') 这种情况，
+                既要保证每个函数只执行一次，又要保证 fire 后添加的函数也能执行
+                eg:
+                function aaa(){console.log(1)}
+                function bbb(){console.log(2)}
+                var cb = $.callbacks('once memory');
+
+                cb.add(aaa);
+                cb.fire();
+
+                cb.add(bbb)
+
+                虽然 bbb 是在 fire 后添加的，但是有 memory 参数，所以会执行：
+                fire( memory );
+
+                那么执行完毕后，list 数组当然要清空，不然以后每次 add(fn)，都会把之前执行过的函数再执行一遍
+                 */
 				} else if ( memory ) {
 					list = [];
                 // 配置了 once 参数、但没配置 memory 参数，使队列失效，之后怎样都不会执行
@@ -4344,8 +4371,9 @@ jQuery.Callbacks = function( options ) {
 			// Add a callback or a collection of callbacks to the list
             // 回调队列中添加一个回调或回调的集合
             /*
-            cb.add(fn1,fn2)
-            cb.add(fn1,[fn2,fn3])
+            eg:
+            ① cb.add(fn1,fn2)
+            ② cb.add(fn1,[fn2,fn3])
              */
 			add: function() {
 				if ( list ) {
@@ -4357,8 +4385,8 @@ jQuery.Callbacks = function( options ) {
                             // 参数为 function
 							if ( type === "function" ) {
                                 /*
-                                如果没有 options.unique 参数，直接存
-                                如果有 options.unique 参数，并且没有重复存过，也存
+                                ① 如果没有 options.unique 参数，直接存
+                                ② 如果有 options.unique 参数，并且没有之前没有存过，也存
                                 */
 								if ( !options.unique || !self.has( arg ) ) {
 									list.push( arg );
@@ -4366,37 +4394,35 @@ jQuery.Callbacks = function( options ) {
                             // 参数为类数组 cb.add([f1,f2,f3])
 							} else if ( arg && arg.length && type !== "string" ) {
 								// Inspect recursively
-                                // 递归检查
+                                // 递归
 								add( arg );
 							}
 						});
 					})( arguments );
 					// Do we need to add the callbacks to the
 					// current firing batch?
+                    // 比如 fn1 执行过程中调用了 add(fn2)，那么执行把 list 数组长度更新一下，fn2 也会被执行到的
 					if ( firing ) {
 						firingLength = list.length;
 					// With memory, if we're not firing then
 					// we should call right away
                     /*
-                     ① memory = options.memory && data;
-                     memory 为最后一次调用 callbacks.fireWith(...) 时所使用的参数 [context, arguments]
-                     如果有 memory 说明 options.memory 为真，即有 memory 参数
-                     ② memory 默认值是 undefined，如果有 memory 还说明执行过 fire 方法
-                     ③ 有 memory，对于还没执行的函数，我们要立即执行它们
-
-                     即便是设置了 options.once ，只要执行过 fire 方法，使得 memory 有值，就会触发 cb.add(fn) 新增的 fn 方法
-                     var cb = $.Callbacks('once memory');
+                     ① 对应这种情况：
+                     var cb = $.Callbacks('memory');
                      cb.add(fn1);
                      cb.fire();
                      cb.add(fn2);
 
-                     cb.fire()
+                     有 memory 参数时，fn2 是在 fire 后添加的，我们要想 fn2 也能执行，那么就再这里再调用 fire( memory )
 
-                     虽然这里 fn2 在 fire 方法后添加，但还是会执行 1 次，这就是 memory 的作用。
-                     之后再 fire 就不起作用了，因为有 once
+                     而这个 memory 是上次执行 fire 方法时的 options.memory && data ，也就是 data，也即是上次执行 fire 方法的执行上下文和实参
+                    
+                     另外，fn1 已经执行过了，但是还存在 list 数组中，可是我们并不想再次触发它，所以，起始位置得重新算
 
-                     有一种特例，当有参数 stopOnFalse 时，如果有函数返回 false
-                     则 memory = false;
+                     如果再次执行 cb.fire()，那么 fn1 和 fn2 当然都会执行了
+
+                     ② 对于特列 var cb = $.Callbacks('once memory');
+                     不光有 memory 还要求每个函数只执行一次，其实上次执行 fire 的时候会清空 list = []，那么这里重新算得的起始位置是 0，和上面的分析也不冲突
                     */
 					} else if ( memory ) {
                         // 从上次执行完的位置开始
@@ -4432,8 +4458,10 @@ jQuery.Callbacks = function( options ) {
 			},
 			// Check if a given callback is in the list.
 			// If no argument is given, return whether or not list has callbacks attached.
-            // 如果有参数 fn 并且 fn 已经存在回调队列里，返回 true
-            // 如果没有参数 fn，只要回调队列不为空，就返回 true
+            /*
+            ① 如果有参数 fn 并且 fn 已经存在回调队列里，返回 true
+            ② 如果没有参数，只要回调队列不为空，就返回 true
+             */
 			has: function( fn ) {
 				return fn ? jQuery.inArray( fn, list ) > -1 : !!( list && list.length );
 			},
@@ -4445,7 +4473,7 @@ jQuery.Callbacks = function( options ) {
 				return this;
 			},
 			// Have the list do nothing anymore
-            // 禁用回调
+            // self.add、self.fire 、self.fieWith 都不能触发 fire 方法来启动回调队列了
 			disable: function() {
                 // 后续的所有函数都不继续执行了 list 不为真，所有的函数都启动不了
 				list = stack = memory = undefined;
@@ -4456,9 +4484,13 @@ jQuery.Callbacks = function( options ) {
 			disabled: function() {
 				return !list;
 			},
-			// Lock the list in its current state
+			/*
+            ① 没有 memory 参数
+               self.add、self.fire 、self.fieWith 都不能触发 fire 方法来执行回调队列了
+            ② 有 memory 参数
+               self.add 方法可以触发 fire 方法来执行回调队列
+             */
 			lock: function() {
-                // 当执行过一次 cb.fire() -> fired，如果再把 stack 置为 undefined，那就再也不能启动 cb.fire() 方法了
 				stack = undefined;
 				if ( !memory ) {
 					self.disable();
@@ -4472,12 +4504,12 @@ jQuery.Callbacks = function( options ) {
 			},
 			// Call all callbacks with the given context and arguments
 			fireWith: function( context, args ) {
-                // 回调队列没有被触发过，或者是 stack 为数组（如果没有配置 once 参数，stack 为 []）
-                /*
-                第一次调用 cb.fire('hello') -> fired = true
-                要想第二次调用 cb.fire('hello') 会执行，必须 stack 为数组，也就是说没有配置 once 参数
-                 */
+                // 回调队列没有被触发过，或者是 stack 为数组（没有配置 once 参数时，stack 为 []）
 				if ( list && ( !fired || stack ) ) {
+                    /*
+                    ① 第一次调用 cb.fire('hello') -> fired = true
+                    ② 要想第二次调用 cb.fire('hello') 会执行，必须 stack 为数组，也就是说没有配置 once 参数
+                     */
 					args = args || [];
                     // [1,2,3].slice() -> [1, 2, 3]
 					args = [ context, args.slice ? args.slice() : args ];
@@ -4493,8 +4525,11 @@ jQuery.Callbacks = function( options ) {
 
                     cb.add(fn1,fn2);
                     cb.fire('hello');
+                    
+                    观察上面这段代码，我们以为程序会死循环，一直执行 fn1 fn1 ...
+                    实际执行上面的代码，我们发现执行顺序是 fn1 fn2 fn1 fn2 ...
 
-                    firing 过程不能阻断还是很有必要的，不然上面这段程序就会死循环，一直执行 fn1...
+                    这是因为这里采取了措施，如果在 firing 过程中，再次调用 cb.fire()，也会把上次的函数队列完全执行完，再执行新的 fire 队列                    
                      */
 					if ( firing ) {
                         // 正在执行回调队列，把新增的 fire 参数加入 stack 数组
@@ -4507,9 +4542,7 @@ jQuery.Callbacks = function( options ) {
 				return this;
 			},
 			// Call all the callbacks with the given arguments
-            /*
-            cb.fire(value) 回调函数队列的每一个函数都会以 value 为实参执行
-             */
+            // cb.fire(value) 回调函数队列的每一个函数都会以 value 为实参执行（执行上下文为这里的 this，也就是 self）
 			fire: function() {
 				self.fireWith( this, arguments );
 				return this;
