@@ -10201,9 +10201,8 @@ jQuery.each({
 
 		以 fn = function( elem ) {
 			return jQuery.dir( elem, "nextSibling" );
+            // 返回一个数组，数组内容为 this[ i ] 后面的所有兄弟元素
 		} 为例：
-
-		返回一个数组，数组内容为 this[ i ] 后面的所有兄弟元素
 
 		那么 matched 的值就是一个二维数组吗？
 		并不是！因为 match 方法最后有个处理：
@@ -11441,7 +11440,7 @@ function setGlobalEval( elems, refElements ) {
 
 // 复制附加数据和绑定事件
 function cloneCopyEvent( src, dest ) {
-	var i, l, type, pdataOld, pdataCur, udataOld, udataCur, events;
+	var i, l, eventType, pdataOld, pdataCur, udataOld, udataCur, events;
 
 	// 如果目标不是 Element，直接返回
 	if ( dest.nodeType !== 1 ) {
@@ -11462,10 +11461,11 @@ function cloneCopyEvent( src, dest ) {
 			delete pdataCur.handle;
 			pdataCur.events = {};
 
-			for ( type in events ) {
-				for ( i = 0, l = events[ type ].length; i < l; i++ ) {
+            // 源文件中这里的变量名是 type，在 sublime 编辑器下会影响下文的关键词高亮效果，所以这里改了个变量名
+			for ( eventType in events ) {
+				for ( i = 0, l = events[ eventType ].length; i < l; i++ ) {
 					// 依次把事件绑定到目标元素上
-					jQuery.event.add( dest, type, events[ type ][ i ] );
+					jQuery.event.add( dest, eventType, events[ eventType ][ i ] );
 				}
 			}
 		}
@@ -11524,24 +11524,55 @@ function fixInput( src, dest ) {
 
 
 jQuery.fn.extend({
+    /*
+    作用：用于在所有匹配元素用单个元素包裹起来
+    分三步：
+    ① 根据选择器匹配出元素，然后克隆它，作为【包裹元素】
+    ② 毕竟【包裹元素】，总得找个地方插入文档的。如果当期元素已经在文档里，那么，把包裹元素放到 this[0] 前面。
+    ③ 把 this 用【包裹元素】最深子节点包裹起来
+     */ 
 	wrapAll: function( html ) {
 		var wrap;
 
+        // 参数是函数，递归调用本方法
 		if ( jQuery.isFunction( html ) ) {
 			return this.each(function( i ) {
 				jQuery( this ).wrapAll( html.call(this, i) );
 			});
 		}
 
+        // 最起码得有一个元素，否则不往下执行了
 		if ( this[ 0 ] ) {
 
 			// The elements to wrap the target around
+            // 包裹元素
 			wrap = jQuery( html, this[ 0 ].ownerDocument ).eq( 0 ).clone( true );
 
+            /*
+            ① parentNode 存在说明元素在文档里，例如 html 节点的父节点是 document
+               document.documentElement.parentNode === document -> true
+
+            ② warp 元素插入到 this[0] 元素前面
+             */ 
 			if ( this[ 0 ].parentNode ) {
 				wrap.insertBefore( this[ 0 ] );
 			}
 
+            /*
+            ①  jQuery.fn.map: function ( callback ) {
+                    return this.pushStack( jQuery.map( this, function( elem, i ) {
+                        return callback.call( elem, i, elem );
+                    } ) );
+                }
+            ②  jQuery.map: function ( elems, callback, arg ) {
+                    ...
+                    value = callback( elems[ i ], i, arg )
+                    ...
+                }
+                
+            所以，以下的回调函数里的 this 就是 elem[i]，也就是 wrap[i]
+            层层往下找到最深的节点，然后把 this 添加到 warp 下最深的节点里
+             */
 			wrap.map(function() {
 				var elem = this;
 
@@ -11557,6 +11588,7 @@ jQuery.fn.extend({
 	},
 
 	wrapInner: function( html ) {
+        // 函数参数，递归调用
 		if ( jQuery.isFunction( html ) ) {
 			return this.each(function( i ) {
 				jQuery( this ).wrapInner( html.call(this, i) );
@@ -11565,14 +11597,21 @@ jQuery.fn.extend({
 
 		return this.each(function() {
 			var self = jQuery( this ),
+                // jQuery.fn.contents 返回当前元素子元素组成的数组
 				contents = self.contents();
 
+            // 在每个匹配元素的所有子节点外部包裹指定的 html 结构
 			if ( contents.length ) {
 				contents.wrapAll( html );
-
+            // 在元素 self 内部末尾插入子节点 html
 			} else {
 				self.append( html );
 			}
+            /*
+            上面两种插入方式其实本质上还是一种
+            ① 如果 self 有子节点，用 html 把子节点包裹起来，那 html 还是在 self 内部
+            ② 如果 self 没有子节点，那么，直接把 html 插入 self 内部
+             */
 		});
 	},
 
@@ -11584,6 +11623,7 @@ jQuery.fn.extend({
     ⑤ $('div').wrap(document.getElementById('wrapper'));
     ⑥ $('div').wrap(function(){});
      */
+    // wrapAll 是把整个 this 用 html 包裹起来，而 warp 是每个 this[i] 用 html 包裹起来
 	wrap: function( html ) {
 		var isFunction = jQuery.isFunction( html );
 
@@ -11592,7 +11632,12 @@ jQuery.fn.extend({
 		});
 	},
 
+    // 移除每个匹配元素的父元素
 	unwrap: function() {
+        /*
+        ① jQuery.fn.parent 方法有个入栈操作，后面有个 end 方法 出栈
+        ② 对每个元素的父元素进行替换
+         */
 		return this.parent().each(function() {
 			if ( !jQuery.nodeName( this, "body" ) ) {
 				jQuery( this ).replaceWith( this.childNodes );
