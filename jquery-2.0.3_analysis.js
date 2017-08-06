@@ -4758,7 +4758,7 @@ function aaa(){
     var dfd = $.Deferred();
     setTimeout(function(){
         dfd.resolve();
-    });
+    },1000);
     return dfd;  // 对外暴露接口 resolve|notify|reject 可以改变状态
 }
 
@@ -4837,7 +4837,7 @@ deferred 对象 api：
 * 事件发布：resolve | reject | notify
 
 (1) $.Deferred(func)
-接受一个 function 参数，function 里边可以使用 this 来调用当前的 deferred 对象
+接受一个 function 参数，function 里边可以使用 this 来调用生成的 deferred 对象
 
 (2) deferred.done(fn)
 添加【成功】时调用的回调函数
@@ -4849,21 +4849,20 @@ deferred 对象 api：
 添加【处理中】调用的回调方法
 
 (5) deferred.resolve/resolveWith([context], args)
-在任务处理【成功】之后使用此方法触发【成功】事件，之前加入done队列的回调会被触发
+在任务处理【成功】之后使用此方法触发【成功】事件，之前加入 done 队列的回调函数会被触发
 
 (6) deferred.reject/rejectWith([context], args)
-在任务处理【失败】之后使用此方法触发【失败】事件，之前加入fail队列的回调会被触发
+在任务处理【失败】之后使用此方法触发【失败】事件，之前加入 fail 队列的回调函数会被触发
 
 (7) deferred.notify/notifyWith([context], args)
 在任务【处理中】可以使用此方法触发【处理中】事件，之前加入progress队列的回调会被触发
 
 (8) deferred.promise()
-简单理解就是生成一个跟deferred一样的对象，但是无法在外部用resolve等去修改当前任务状态
+简单理解就是生成一个跟 deferred 一样的对象，但是无法在外部用 resolve、reject、notify 等去修改当前任务状态
 
 (9) deferred.then(fnDone, fnFail, fnProgress)
-可以直接传入三个回调函数，分别对应done|fail|progress三个状态的回调
+可以直接传入 3 个回调函数，分别对应done|fail|progress三个状态的回调，相当于这种写法的快捷方式：
 
-可以指定 3 种回调函数，相当于这种写法的快捷方式：
 deferred.done(fnDone).fail(fnFail).progress(fnProgress)
 
 (10) deferred.always(fn)
@@ -4893,11 +4892,15 @@ jQuery.extend({
 					deferred.done( arguments ).fail( arguments );
 					return this;
 				},
-                // deferred.done(fnDone).fail(fnFail).progress(fnProgress)的快捷方式
-                // then 就是很单纯的一个方法，之所以写得比较复杂，是因为 pipe 方法比较复杂
+                
                 /*
+                deferred.then(fnDone,fnFail,fnProgress) 方法是 deferred.done(fnDone).fail(fnFail).progress(fnProgress) 写法的快捷方式
+                
+                then 就是很单纯的一个方法，之所以写得比较复杂，是因为 pipe 和 then 方法共用代码，而 pipe 方法比较复杂
+
                 看看 pipe 方法怎么用：
-                ① pipe 返回值不是 Deferred 实例，比如字符串
+                (1) pipe 方法的回调函数返回普通类型的值，比如字符串
+
                 var dfd = $.Deferred();
 
                 setTimeout(function(){
@@ -4915,12 +4918,18 @@ jQuery.extend({
                 // 3 秒后弹出 ‘hi妙味’。
 
                 这里 pipe 和 then 一样，第一个函数参数，是【成功】的回调函数，
-                另外，返回值 arguments[0] + '妙味' 作为 newDfd 【成功】的回调函数的实参。
+                另外，返回值 arguments[0] + '妙味' 作为 newDfd【成功】的回调函数的实参。
 
-                也就是说 【dfd.resolve('hi')】 触发 【function(){return arguments[0] + '妙味';}】
-                【arguments[0] + '妙味'】 作为 【function(){alert(arguments[0])}】 的实参
+                所以以上执行过程是：
+                ① dfd.resolve('hi')
+                ② 执行 did.pipe 的 resolve 后的回调函数，返回字符串 'hi妙味'
+                ③ dfd.pipe 函数本身返回一个新的延迟对象 newDfd，这个延迟对象的 resolve 回调函数的实参为 'hi妙味'
+                ④ 自动触发新的延迟对象 newDfd 的 resolveWith 方法
+                ⑤ 执行 newDfd.done 指定的回调方法，参数为 'hi妙味'
 
-                ② pipe 返回值是 Deferred 实例
+
+                (1) pipe 方法的回调函数返回延迟对象
+
                 var dfd = $.Deferred();
 
                 setTimeout(function(){
@@ -4936,6 +4945,14 @@ jQuery.extend({
                 });
 
                 3 秒后弹出 ‘hi’
+
+                执行流程如下：
+                ① dfd.resolve('hi')
+                ② 执行 did.pipe 的 resolve 后的回调函数，返回延迟对象 dfd
+                ③ dfd.pipe 函数本身返回一个新的延迟对象 newDfd，这个延迟对象的 resolve 回调函数的实参为 'hi'
+                ④ 自动触发新的延迟对象 newDfd 的 resolve 方法
+                ⑤ 执行 newDfd.done 指定的回调方法，参数为 'hi'
+
                 */
 				then: function( /* fnDone, fnFail, fnProgress */ ) {
 					var fns = arguments;
@@ -4947,8 +4964,11 @@ jQuery.extend({
 
                     then/pipe 最后返回的是一个 promise 对象
 
-                    【关键】 经过调试分析，jQuery.Deferred(function(newDefer){}) 返回的就是 newDefer
-                    jQuery.Deferred(function(newDefer){}).promise() 即 newDefer.newDefer
+                    流程： 
+                    ① jQuery.Deferred() 会新建一个延迟对象 newDefer
+                    ② 如果给构造方法 jQuery.Deferred 传入函数参数 jQuery.Deferred(fn)，那么这个新的延迟对象 newDefer 会作为实参传给 fn
+                    ③ 所以，jQuery.Deferred(function(newDefer){}) 返回的就是一个新建的延迟对象 newDefer，然后将 newDefer 传给匿名函数
+                    ② jQuery.Deferred(function(newDefer){}).promise() 即 newDefer.promise()
 
                     简化一下 jQuery.Deferred 方法：
                     jQuery.extend({
@@ -4969,14 +4989,51 @@ jQuery.extend({
 						jQuery.each( tuples, function( i, tuple ) {
                             // action = "resolve" | "reject" | "notify"
 							var action = tuple[ 0 ],
-                                // 参数如果是函数，就返回该函数，否则返回 false
-                                // 参数是 done、fail、progress 的回调方法
+                                /*
+                                ① 参数是 done、fail、progress 的回调方法
+                                   fns[0] -> 【成功】后触发
+                                   fns[1] -> 【失败】后触发
+                                   fns[2] -> 【进行中】触发
+                                ② 如果 fns[i] 是函数，则赋值给 fn，否则 fn 是 false
+                                 */
 								fn = jQuery.isFunction( fns[ i ] ) && fns[ i ];
 
 							// deferred[ done | fail | progress ] for forwarding actions to newDefer
-                            // 依次把函数加入回调队列
-                            // 这一块之所以写的这么复杂是因为 then 方法 和 pipe 方法公用代码
-                            // 以下这种写法主要是为 pipe 写的
+                            /*
+                            这里如果只是定义 then 方法没必要这么复杂，只是 pipe/then 方法共用这个定义，大部分代码都是针对 pipe 函数写的
+                            
+                            如果单纯的实现 then 方法，只需要这么写就行了：
+                            deferred[ tuple[1] ](function() {
+                                fn.apply( this, arguments );
+                            });
+                    
+                            下面理一理 pipe 方法流程：
+                            
+                            (1) 给 deferred[ done | fail | progress ] 分别添加匿名回调方法，
+                                匿名回调方法内部的 this 最终是 fire 带过来的，谁调用 fire 方法，这个 this 就是谁
+                            (2) deferred[ done | fail | progress ] 的匿名回调方法分别被 deferred[ resolve | reject | notify ] 方法触发
+                            (3) 以【成功】为例：
+                               deferred[ resolve ] 执行
+                               -> deferred[ done ] 的匿名回调方法执行
+                               -> returned = fns[0].apply( this, arguments )
+                               a. 如果 returned.promise 是函数，说明返回值是 $.Deferred 的实例，那就：
+                                  延迟对象 returned 【成功】后调用 newDefer.resolve
+                                  延迟对象 returned 【失败】后调用 newDefer.reject
+                                  延迟对象 returned 【进行中】调用 newDefer.notify
+                               b. 如果 returned 就是一般的类型，那就：
+                                  延迟对象 deferred 【成功】后调用 newDefer.resolveWith
+                                  延迟对象 deferred 【失败】后调用 newDefer.rejectWith
+                                  延迟对象 deferred 【进行中】调用 newDefer.notifyWith
+
+                                  这里的 deferred[ resolveWith | rejectWith | notifyWith ] 方法实质就是 fireWith 方法
+                                  fireWith 方法有两个参数，第一个参数是给回调函数的执行上下文，第二个参数是给回调函数的实参
+
+                                  ① 关于第一个参数 this === promise ? newDefer.promise() : this
+                                  如果 this 是 deferred.promise，那就转交给 newDefer.promise，否则还是 deferred.promise
+
+                                  ② 关于第二个参数 fn ? [ returned ] : arguments 
+                                  如果 fn 是函数，那就把函数的返回值作为实参；如果 fn 不是函数，那就把 deferred[ resolve | reject | notify ] 的实参传过去
+                             */
 							deferred[ tuple[1] ](function() {
                                 // fn 是函数，returned 就是函数返回值（可能是 undefined，也可能是其他）
                                 // fn 不是函数，就是 false
@@ -4993,67 +5050,40 @@ jQuery.extend({
 									newDefer[ action + "With" ]( this === promise ? newDefer.promise() : this, fn ? [ returned ] : arguments );
 								}
 							});
-                            /*
-                            以上这段代码有点复杂，如果单纯的实现 then 方法，只需要这么写：
-                            deferred[ tuple[1] ](function() {
-								fn.apply( this, arguments );
-							});
-
-                            下面的 if - else 是为了实现 pipe 方法的：（参见上例）
-                            ① 如果 returned 是个 Deferred 实例
-                            var dfd = $.Deferred();
-
-                            var newDfd = dfd.pipe(function(){
-                                return dfd;
-                            });
-
-                            newDfd === dfd  // false
-                            newDfd 是一个 promise 对象，而 dfd 是一个 deferred 对象
-
-                            如果改成 
-                            var newDfd = dfd.pipe(function(){
-                                return $.Deferred();
-                            });
-
-                            其他跟上面例子一样，就不会弹出 ‘hi’ 了。
-
-                            经过试验，newDfd === newDefer.promise() // true 
-                            这很关键
-
-                            ① 如果 returned 不是 Deferred 实例，比如字符串
-                               会调用 newDefer[ "xxxWith" ](context,['hi妙味'])
-                               即 fire 触发回调队列
-                            */
-
 						});
-                        // 退出前手工设置null避免闭包造成的内存占用
+                        // 退出前手工设置 null 避免闭包造成的内存占用
 						fns = null;
 					}).promise();
 				},
 				// Get a promise for this deferred
 				// If obj is provided, the promise aspect is added to the object
-                // 有参数，参数就继承 promise
-                // 没有参数，就返回 promise
-                // 疑问，函数里的 promise 到底是指包含这个函数的 promise 对象，还是当前的 promise 属性？？
                 /*
+                疑问，函数里的 promise 到底是指包含这个函数的 promise 对象，还是当前的 promise 属性？
+                
                 做个试验：
+                ① promise 对象的 promise 属性是匿名函数
                 var promise = {
                         promise : function(){
                             console.log(typeof promise);
                         }
                     };
                 promise.promise()
-                // object 
+                // 打印结果：object 
                 也就是说，函数里的 promise 指的是外层的对象，而不是里面的 promise 属性。确实应该这样，毕竟是属性，又不是函数名。
                 
+                ② promise 对象的 promise 属性是名为 promise 的函数
                 var promise = {
                         promise : function promise(){
                             console.log(typeof promise);
                         }
                     };
                 promise.promise()
-                // function
+                // 打印结果：function
                 这样写，函数里的 promise 就是指当前函数了。
+
+                所以，下面 promise 函数的作用是：
+                a. 有参数，把 promise 的属性和方法都赋值给它，然后返回这个参数
+                b. 没有参数，就返回 promise
                  */
 				promise: function( obj ) {
 					return obj != null ? jQuery.extend( obj, promise ) : promise;
@@ -5071,10 +5101,8 @@ jQuery.extend({
         promise.promise( deferred ); 
         这句使得 deferred 继承 promise，即 promise 的方法全复制给 deferred
 
-        所以，deferred 比 promise 多 resolve、reject、notify 等三个方法
-        而 resolve、reject 等方法是可以修改状态的，
-        所以 promise 对象外部不可以修改状态，而 deferred 外部可以修改状态
-        参考上面的【例子13】、【例子14】
+        所以，deferred 比 promise 多出 resolve、reject、notify 等三个方法，而 resolve、reject 等方法是可以修改状态的，
+        所以 promise 对象外部不可以修改状态，而 deferred 外部可以修改状态（参考上面的【例子13】、【例子14】）
          */
 
 		// Keep pipe for back-compat
@@ -5083,9 +5111,10 @@ jQuery.extend({
 
 		// Add list-specific methods
 		jQuery.each( tuples, function( i, tuple ) {
-            // list = $.callbacks("once memory");
-			var list = tuple[ 2 ],          // jQuery.Callbacks("once memory")
-				stateString = tuple[ 3 ];   // "resolved" | "rejected" | undefined
+                // list = $.callbacks("once memory");
+			var list = tuple[ 2 ],     
+                // "resolved" | "rejected" | undefined
+				stateString = tuple[ 3 ];   
 
 			// promise[ done | fail | progress ] = list.add
             /* 
@@ -5096,45 +5125,49 @@ jQuery.extend({
 			promise[ tuple[1] ] = list.add;
 
 			// Handle state
-            // i 只能为 0 或 1
-            // 默认向 doneList、failList 添加 3 个回调函数
 			if ( stateString ) {
 				list.add(function() {
 					// state = [ resolved | rejected ]
 					state = stateString;
 
 				/*
-                异或 ^ : 两个二进制位不同返回 1，相同返回 0
-                如： 0 ^ 3 -> (00) ^ (11) -> (00) -> 0
-                     0 ^ 1 -> (00) ^ (01) -> 1
-                     1 ^ 1 -> 0
-                     2 ^ 1 -> (10) ^ (01) -> (11) -> 3
-                */
-                // [ reject_list | resolve_list ].disable; progress_list.lock
+                ① 这里 stateString 为真，那么 i 只能是 0 或 1，所以这里是向 doneList | failList 各添加 3 个回调函数
+
+                ② 异或 ^ : 两个二进制位不同返回 1，相同返回 0，如：
+                0 ^ 1 -> (00) ^ (01) -> 1
+                1 ^ 1 -> (01) ^ (01) -> 0
+                
+                总结一下：
+
+                (1）resolve 方法会触发：
+                    a. state 变为 resolved
+                    b. 使得 failList 禁用，也就是 fail 的回调都不能执行
+                    c. 锁住 processList
+
+                (2) reject 方法会触发：
+                    a. state 变为 rejected
+                    b. 使得 doneList 禁用，也就是 done 的回调都不能执行
+                    c. 锁住 processList
+
+                相当于：
+                doneList : [changeState, failList.disable, processList.lock]
+                failList : [changeState, doneList.disable, processList.lock]
+    
+                a. changeState 改变状态的匿名函数，deferred的状态，分为三种：pending(初始状态), resolved(解决状态), rejected(拒绝状态)
+                b. 不论 deferred 对象最终是 resolve（还是 reject），在首先改变对象状态之后，都会 disable 另一个函数列表 failList(或者 doneList)
+                c. 然后 lock processList 保持其状态，最后执行剩下的之前 done（或者fail）进来的回调函数
+
+                [ reject_list | resolve_list ].disable; progress_list.lock
+                 */
                 }, tuples[ i ^ 1 ][ 2 ].disable, tuples[ 2 ][ 2 ].lock );
 			}
 
-            /*
-            相当于：
-            doneList : [changeState, failList.disable, processList.lock]
-            failList : [changeState, doneList.disable, processList.lock]
-
-            ① changeState 改变状态的匿名函数，deferred的状态，分为三种：pending(初始状态), resolved(解决状态), rejected(拒绝状态)
-            ② 不论deferred对象最终是resolve（还是reject），在首先改变对象状态之后，都会disable另一个函数列表failList(或者doneList)
-            ③ 然后lock processList保持其状态，最后执行剩下的之前done（或者fail）进来的回调函数
-            */
-
 			// deferred[ resolve | reject | notify ]
-            /*
-            deferred[ "resolve" ] = function(){
-                deferred[ "resolveWith" ](this === deferred ? promise : this, arguments );
-                return this;
-            }
-            */
 			deferred[ tuple[0] ] = function() {
 				deferred[ tuple[0] + "With" ]( this === deferred ? promise : this, arguments );
 				return this;
 			};
+            // deferred[ resolveWith | rejectWith | notifyWith ]
 			deferred[ tuple[0] + "With" ] = list.fireWith;
 		});
 
@@ -5144,10 +5177,9 @@ jQuery.extend({
 		// Call given func if any
         /*
         $.Deferred(func) 这种形式：
-        执行函数 func，this 和 参数都为 deferred
+        执行函数 func，this 和参数都为 deferred
 
-        换句话讲：$.Deferred() 接受一个 function 参数，function 里面
-        可以用 this 来获取 deferred 对象
+        换句话讲：$.Deferred() 接受一个 function 参数，function 里面可以用 this 来获取 deferred 对象
         */
 		if ( func ) {
 			func.call( deferred, deferred );
@@ -5171,7 +5203,7 @@ jQuery.extend({
 
     弹出 ‘成功’
 
-    ② 两个延迟对象都完成才触发完成回调
+    ② 两个延迟对象都【成功】才触发 when 的 done 回调
     function aaa(){
         var dfd = $.Deferred();
         dfd.resolve();
@@ -5186,12 +5218,9 @@ jQuery.extend({
         alert('成功');
     });
 
-    两个延迟对象都【成功】了，弹出 ‘成功’
-
-    必须都成功，才会触发成功的回调函数；
+    两个延迟对象都【成功】了，才弹出 ‘成功’
     
-
-    ③ 只要有一个失败，就会触发失败的回调
+    ③ 只要有一个【失败】，就会触发 when 的 fail 回调
     function aaa(){
         var dfd = $.Deferred();
         dfd.resolve();
@@ -5243,7 +5272,7 @@ jQuery.extend({
 
     以上都是弹出 ’成功‘
 
-    ⑥ 如果参数不会延迟对象，会把参数传递给成功回调函数
+    ⑥ 如果参数不是延迟对象，会把参数传递给 when 的 done 回调
     $.when(123,456).done(function(){
         console.log(arguments[0]);
         console.log(arguments[1]);
@@ -5254,6 +5283,30 @@ jQuery.extend({
 
     以上打印的 arguments[0]、arguments[1] 分别是 123 ，456
 
+    ⑦ 如果参数是延迟对象，会把每个延迟对象的实参和执行上下文依次传递给 when 的 done 回调
+    function aaa(){
+        var dfd = $.Deferred();
+        dfd.resolve('aaa 中延迟对象的实参');
+        return dfd;
+    }
+    function bbb(){
+        var dfd = $.Deferred();
+        dfd.resolve('bbb 中延迟对象的实参');
+        return dfd;
+    }
+    $.when(aaa(),bbb()).done(function(){
+        console.log('this:',this);
+        console.log(arguments[0]);
+        console.log(arguments[1]);
+        alert('成功');
+    });
+
+
+    打印结果：
+    this: (2) [Object, Object]
+    ”aaa 中延迟对象的实参“
+    ”bbb 中延迟对象的实参”
+
      */
 
 	// Deferred helper
@@ -5261,26 +5314,41 @@ jQuery.extend({
     // $.when() 返回 deferred.promise();
 	when: function( subordinate /* , ..., subordinateN */ ) {
 		var i = 0,
+            // 参数转为数组
 			resolveValues = core_slice.call( arguments ),
 			length = resolveValues.length,
 
 			// the count of uncompleted subordinates
-            // ① length 为 0，也就是没有参数时，remaining 为 0
-            // ② length 为 1，也就是传 1 个参数，若参数是延迟对象，remaining 为 1，否则为 0
-            // ③ length 大于 1，参数包括延迟对象和非延迟对象，remaining 为 length
+            /*
+            注意一下运算符的优先级， || 优先级高于 ? :
+
+            ① length 不为 1，或者第一个参数是延迟对象
+               remaining 为参数个数 length
+            ② length 为 1，有且仅有一个参数
+               a. 若这个参数是延迟对象，那么 remaining 为 1
+               b. 若这个参数不是延迟对象，那么 remaining 为 0
+             */ 
 			remaining = length !== 1 || ( subordinate && jQuery.isFunction( subordinate.promise ) ) ? length : 0,
 
 			// the master Deferred. If resolveValues consist of only a single Deferred, just use that.
-            // ① length 为 0，remaining 为 0，deferred 为 jQuery.Deferred()
-            // ② length 为 1，有一个参数，若参数是延迟对象，deferred 为 subordinate，否则 deferred 为 jQuery.Deferred()
-            // ③ length 大于 1，remaining 为 length 大于 1，deferred 为 jQuery.Deferred()
+            /*
+            ① remaining === 1
+               有且仅有一个参数 subordinate，并且这个参数是延迟对象，那么 deferred 就是这个延迟对象 subordinate
+            ② 其他所有情况，新建一个延迟对象，赋给 deferred
+             */
 			deferred = remaining === 1 ? subordinate : jQuery.Deferred(),
 
 			// Update function for both resolve and progress values
+            // 这个方法可以收集每个延迟对象的 done|progress 的回调函数执行过程中的上下文和实参
 			updateFunc = function( i, contexts, values ) {
 				return function( value ) {
 					contexts[ i ] = this;
 					values[ i ] = arguments.length > 1 ? core_slice.call( arguments ) : value;
+                    /*
+                    ① values 要么是 progressValues，要么是 resolveValues
+                    ② 如果有参数延迟对象的 progress 事件发生，就会触发一次 deferred.notifyWith，多个 progress 事件发生，触发多次
+                    ③ 如果有参数延迟对象的 done 事件发生，那就执行一次 --remaining，等到 remaining 为 0 了，就触发 deferred.resolveWith
+                     */
 					if( values === progressValues ) {
 						deferred.notifyWith( contexts, values );
                     // remaining 为 0，即所有的延迟对象都【成功】了，触发 master Deferred 的 resolveWith
@@ -5301,10 +5369,27 @@ jQuery.extend({
                 // 当前参数是延迟对象，【成功】或者【进行中】都调用函数 updateFunc
 				if ( resolveValues[ i ] && jQuery.isFunction( resolveValues[ i ].promise ) ) {
 					resolveValues[ i ].promise()
-                        // done、fail、progress 等方法的参数应该是函数的定义，这里却是函数的执行
-                        // 因为 updateFunc 函数返回值就是一个新的函数
-						.done( updateFunc( i, resolveContexts, resolveValues ) )
-						.fail( deferred.reject ) // 只要有一个延迟对象失败，master Deferred 就失败了
+						/*
+                        ① resolveValues 是 when() 的实参数组
+
+                        ② done、fail、progress 等方法的参数应该是函数的定义，这里却是函数的执行，
+                           这是因为 updateFunc 函数返回值就是一个新的函数
+                        
+                        ③ 如果 when 的参数中有多个延迟对象（deferred0，deferred1，deferred2...），
+                          这里为每一个延迟对象用 updateFunc 方法定义动态回调函数
+
+                          比如：
+                          a. resolveValues[ 0 ].promise.done(updateFunc( 0, resolveContexts, resolveValues ) )
+                             其中：updateFunc( 0, resolveContexts, resolveValues ) 是新生成的函数 f0
+
+                          b. 当 resolveValues[ 0 ].promise.done 事件发生后，f0 会执行
+
+                          c. f0 执行过程中会把当前的上下文和实参分别保存在 resolveContexts, resolveValues 中
+
+                         */
+                        .done( updateFunc( i, resolveContexts, resolveValues ) )
+                        // 只要有一个延迟对象失败，master Deferred 就失败了
+						.fail( deferred.reject ) 
 						.progress( updateFunc( i, progressContexts, progressValues ) );
                 // 当前参数不是延迟对象，剩余延迟对象个数直接减 1
 				} else {
@@ -5314,9 +5399,11 @@ jQuery.extend({
 		}
 
 		// if we're not waiting on anything, resolve the master
-        // ① length 为 0，remaining 为 0，deferred 为 jQuery.Deferred()，触发 resolveWith，即触发 resolve
-        // ② length 为 1，参数不为延迟对象，remaining 也是为 0，deferred 为 jQuery.Deferred()
-        // resolveValues = core_slice.call( arguments )
+        /*
+        ① 如果 when 的参数中有延迟对象，等这些延迟对象都执行完毕后，remaining 为 0，就开始执行 deferred.resolveWith 
+
+        ② 这些延迟对象执行过程中会修正 resolveContexts 和 resolveValues，即修正最终 deferred 执行的回调函数的上下文和实参
+         */
 		if ( !remaining ) {
 			deferred.resolveWith( resolveContexts, resolveValues );
 		}
