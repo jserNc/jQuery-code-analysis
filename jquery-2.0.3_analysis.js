@@ -137,7 +137,7 @@ jQuery.fn = jQuery.prototype = {
     参数可能为：
     $(null), $(""), $(undefined), $(false)
     $('#id'), $('div'), $('.cls'), $('div + p span > a[title="hi"]')
-    $('<li>'), $('<li>1</li><li>2</li>')
+    $('<li>'), $('<li>1</li><li>2</li>'), $("<iframe frameborder='0' width='0' height='0'/>")
     $(this), $(document),$(document.getElementsByTagName('div')[0]),$(document.getElementsByTagName('div'))
     $(function(){})
     $([]), $({})
@@ -11793,6 +11793,11 @@ var curCSS, iframe,
 	cssPrefixes = [ "Webkit", "O", "Moz", "ms" ];
 
 // return a css property mapped to a potentially vendor prefixed property
+/*
+① 如果属性 name 在 style 对象里就直接返回这个传进来的 name；
+② 如果 ① 不成立，那就循环给 name 加上 cssPrefixes 中的前缀，修正后的 name 在 style 里有则立即跳出循环，返回修正后的 name
+③ 以上都不成立，则返回传进来的 name
+*/
 function vendorPropName( style, name ) {
 
 	// shortcut for names that are not vendor prefixed
@@ -11806,6 +11811,7 @@ function vendorPropName( style, name ) {
 		i = cssPrefixes.length;
 
 	while ( i-- ) {
+		// chrome 下：borderEnd -> webkitBorderEnd
 		name = cssPrefixes[ i ] + capName;
 		if ( name in style ) {
 			return name;
@@ -11815,6 +11821,37 @@ function vendorPropName( style, name ) {
 	return origName;
 }
 
+
+/*
+作用：判断元素 elem 是否隐藏了（不包括 hidden）
+eg:
+例子一：
+<div id="d1" style="display:none">display:none</div>
+<div id="d2" style="visibility:hidden">visibility:hidden</div>
+<script id="script1" type="text/javascript" src="js/jquery-2.0.3.js"></script>
+
+① display:none 返回 true
+isHidden(d1) -> true
+
+② visibility:hidden 返回 false
+isHidden(d2) -> false
+
+③ 默认隐藏的元素 返回 true
+script1.style.display -> ""
+isHidden(script1) -> true
+
+例子二：
+元素 style 没有设置 display 属性，在样式表里设置：
+<style>
+	#div1 {
+		display:none;
+	}
+</style>
+<div id="div1">display:none</div>
+
+div1.style.display -> ""
+isHidden(div1) -> true
+*/
 function isHidden( elem, el ) {
 	// isHidden might be called from jQuery#filter function;
 	// in that case, element will be second argument
@@ -11824,6 +11861,7 @@ function isHidden( elem, el ) {
 
 // NOTE: we've included the "window" in window.getComputedStyle
 // because jsdom on node.js will break without it.
+// 获取元素 elem 当前所有样式
 function getStyles( elem ) {
 	return window.getComputedStyle( elem, null );
 }
@@ -11836,6 +11874,7 @@ function showHide( elements, show ) {
 
 	for ( ; index < length; index++ ) {
 		elem = elements[ index ];
+		// 当前元素没有 style 属性，跳过
 		if ( !elem.style ) {
 			continue;
 		}
@@ -11845,22 +11884,95 @@ function showHide( elements, show ) {
 		if ( show ) {
 			// Reset the inline display of this element to learn if it is
 			// being hidden by cascaded rules or not
+			// 将元素的 style.display 属性设为 "" (默认值)，以便知道元素到底为什么隐藏
 			if ( !values[ index ] && display === "none" ) {
+				/*
+				注意：elem.style.display = "" ，使得元素恢复默认的 display 属性
+				比如，使得 div 按照块级框显示，span 按照行内框显示，script 等本来就不可见的标签还是不显示
+				
+				eg: 
+				(1) 没有样式表，只是在 style 标签上给元素的 display 属性赋值
+				① 在页面里新建 3 个元素：
+				<script id="script1" type="text/javascript" src="js/jquery-2.0.3.js"></script>
+				<span id="span1" style="display:none">元素 display:none</span>
+				<div id="div1" style="display:none">display:none</div>
+				
+				② 以上 script 默认不显示，span、div 是强制不显示，下面分别打印它们的 style.display 属性：
+				script1.style.display -> ""
+				span1.style.display   -> "none"
+				div1.style.display    -> "none"
+
+				③ 分别对它们设置 style.display = ""
+				script1.style.display = "";
+				span1.style.display = "";
+				div1.style.display = "";
+
+				script1 还是看不见，span1、div1 可以看见了，只是 span1 以行内框显示，div1 以块级框显示
+				
+				④ 再次打印它们的 style.display 属性，都是 ""：
+				script1.style.display -> ""
+				span1.style.display   -> ""
+				div1.style.display    -> ""
+
+				⑤ 可见，elem.style.display = "" 的作用是使得元素恢复默认的 display 属性
+
+				(2) 有样式表
+				#div1 {
+					display:none;
+				}
+
+				样式表里将 div1 的 display 属性设为 none，那么
+				div1.style.display = ""; 
+				
+				div1 显示出来！！
+
+				这说明，div1.style.display = "" 只是修改 style.display 为默认值，并不能决定元素可见
+				
+				元素可不可见除了取决于元素类型（script、style 等标签默认隐藏），还取决于有没有样式表设定它的 display 属性
+				
+				(3) 再看看 elem.style.display = ""，其实也挺容易理解的：
+				一般情况下，我们不会给在元素标签里给元素单独设置 style 值，那么 style.display 默认值就是 ""，也挺简单的一个道理
+				*/
 				elem.style.display = "";
 			}
 
 			// Set elements which have been overridden with display: none
 			// in a stylesheet to whatever the default browser style is
 			// for such an element
+			// 样式表里设置了 display : none 的元素
 			if ( elem.style.display === "" && isHidden( elem ) ) {
+				/*
+				① css_defaultDisplay(elem.nodeName) 获取 elem 元素的默认 display 属性
+				② data_priv.access 方法是设置还是获取值取决于参数
+				   a. css_defaultDisplay(elem.nodeName) 为 undefined，获取值：
+				      values[ index ] = data_priv.get( elem, "olddisplay" )
+				   b. css_defaultDisplay(elem.nodeName) 有值，设置值：
+					  values[ index ] = css_defaultDisplay(elem.nodeName)
+				*/
 				values[ index ] = data_priv.access( elem, "olddisplay", css_defaultDisplay(elem.nodeName) );
 			}
 		} else {
-
+			/*
+			① values[ index ] = data_priv.get( elem, "olddisplay" )
+			② 如果没有缓存 olddisplay 属性，这里存一下
+			*/
 			if ( !values[ index ] ) {
 				hidden = isHidden( elem );
-
+				
+				/*
+				① display = elem.style.display;
+				② display && display !== "none"，说明 display 不是 "" 也不是 "none"，display 可能是其他值
+				③ 运算符优先级 && 高于 ||
+				*/
 				if ( display && display !== "none" || !hidden ) {
+					/*
+					① hidden 为 true，说明，elem 的最终呈现的 display 属性为 none，
+					   但是 elem.style.display !== "none"，所以一定是样式表里设置了 none
+					   这时，把 display 属性存起来
+					
+					② hidden 为 false，说明元素可见， elem 的最终呈现的 display 属性肯定不为 none
+					   这时，把 jQuery.css(elem, "display") 存起来
+					*/
 					data_priv.set( elem, "olddisplay", hidden ? display : jQuery.css(elem, "display") );
 				}
 			}
@@ -11869,12 +11981,29 @@ function showHide( elements, show ) {
 
 	// Set the display of most of the elements in a second loop
 	// to avoid the constant reflow
+	// 这个循环真正来设置元素的 display 属性
 	for ( index = 0; index < length; index++ ) {
 		elem = elements[ index ];
 		if ( !elem.style ) {
 			continue;
 		}
+		/*
+		这个 if 判断条件有点奇怪，换种方式看：
+		!show || elem.style.display === "none" || elem.style.display === ""
+		-> !(show && elem.style.display !== "none" && elem.style.display !== "")
+		
+		也就是说满足以下条件的元素就不会进入 if 语句：
+		show && elem.style.display !== "none" && elem.style.display !== ""
+
+		show 的作用就是让元素显示出来。
+		如果满足 elem.style.display !== "none" && elem.style.display !== "" 
+		那这个元素必定可见啊，那就没必要进入 if 语句重新设置一遍了
+		*/
 		if ( !show || elem.style.display === "none" || elem.style.display === "" ) {
+			/*
+			① show 为 true，设置 display 为 values[ index ] || ""
+			② show 为 false，设置 display 为 "none"
+			*/
 			elem.style.display = show ? values[ index ] || "" : "none";
 		}
 	}
@@ -11888,8 +12017,11 @@ jQuery.fn.extend({
 			var styles, len,
 				map = {},
 				i = 0;
+			
 
+			// jQuery.isArray: Array.isArray 原生方法判断数组
 			if ( jQuery.isArray( name ) ) {
+				// 获取元素最终呈现样式
 				styles = getStyles( elem );
 				len = name.length;
 
@@ -11942,6 +12074,7 @@ jQuery.extend({
 	},
 
 	// Don't automatically add "px" to these possibly-unitless properties
+	// 这些属性数字后不能加 'px'
 	cssNumber: {
 		"columnCount": true,
 		"fillOpacity": true,
@@ -11963,17 +12096,37 @@ jQuery.extend({
 	},
 
 	// Get and set the style property on a DOM Node
+	// 获取或者设置元素 css 属性 
 	style: function( elem, name, value, extra ) {
 		// Don't set styles on text and comment nodes
+		// 文本节点和注释节点，直接返回
 		if ( !elem || elem.nodeType === 3 || elem.nodeType === 8 || !elem.style ) {
 			return;
 		}
 
 		// Make sure that we're working with the right name
 		var ret, type, hooks,
+			/*
+			jQuery.camelCase 将 css 属性名转成驼峰写法：
+			eg:
+			margin-top -> marginTop
+			-moz-transform -> MozTransform
+			-webkit-transform -> WebkitTransform
+			*/
 			origName = jQuery.camelCase( name ),
 			style = elem.style;
 
+		/*
+		① jQuery.cssProps: {
+				// normalize float css property
+				"float": "cssFloat"
+		   }
+		② 如果在 jQuery.cssProps 对象中找到对应的属性名，则 name 就是这个找到的属性名；
+		③ 如果在 jQuery.cssProps 对象中找不到，则：
+		   a. vendorPropName( style, origName ) 返回修正后的 origName
+		   b. 将这个修正后的 origName 存入 jQuery.cssProps 对象
+		   c. 将这个修正后的 origName 赋值给 name
+		*/
 		name = jQuery.cssProps[ origName ] || ( jQuery.cssProps[ origName ] = vendorPropName( style, origName ) );
 
 		// gets hook for the prefixed version
@@ -12190,16 +12343,32 @@ function getWidthOrHeight( elem, name, extra ) {
 }
 
 // Try to determine the default display value of an element
+// 根据元素名获取元素的默认 display 属性值
 function css_defaultDisplay( nodeName ) {
 	var doc = document,
+		// elemdisplay = { BODY: "block" }
 		display = elemdisplay[ nodeName ];
 
+	// nodeName 不是 BODY，执行下面：
 	if ( !display ) {
+		/*
+		获取 nodeName 类型元素默认的 display 属性
+		eg:
+		actualDisplay('div',document)    -> "block"
+		actualDisplay('style',document)  -> "none"
+		actualDisplay('a',document)      -> "inline"
+		*/
 		display = actualDisplay( nodeName, doc );
 
 		// If the simple way fails, read from inside an iframe
+		// 如果上边没有获取的 display 属性或者 display 属性是 none，那就在 iframe 里再获取一遍
 		if ( display === "none" || !display ) {
 			// Use the already-created iframe if possible
+			/*
+			① iframe 是上面定义的一个全局变量，如果没有给它初始化，这里给它初始化
+			② 强制 iframe 的 display 属性为 block
+			③ appendTo 方法会返回一个原生 dom 元素组成的数组，所以下面要用 iframe[0] 获取原生元素
+			*/
 			iframe = ( iframe ||
 				jQuery("<iframe frameborder='0' width='0' height='0'/>")
 				.css( "cssText", "display:block !important" )
@@ -12211,6 +12380,7 @@ function css_defaultDisplay( nodeName ) {
 			doc.close();
 
 			display = actualDisplay( nodeName, doc );
+			// 从文档中移除这个 iframe
 			iframe.detach();
 		}
 
@@ -12222,8 +12392,19 @@ function css_defaultDisplay( nodeName ) {
 }
 
 // Called ONLY from within css_defaultDisplay
+/*
+作用：获取标签默认的 display 属性
+eg:
+actualDisplay('div',document)    -> "block"
+actualDisplay('style',document)  -> "none"
+actualDisplay('a',document)      -> "inline"
+*/
 function actualDisplay( name, doc ) {
 	var elem = jQuery( doc.createElement( name ) ).appendTo( doc.body ),
+		/*
+		① elem 是 jQuery( doc.createElement( name ) ) 对应的元素 dom 组成的数组
+		② elem[0] 是 doc.createElement( name ) 创建的这个 dom 元素
+		*/
 		display = jQuery.css( elem[0], "display" );
 	elem.remove();
 	return display;
