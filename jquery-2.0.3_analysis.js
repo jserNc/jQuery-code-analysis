@@ -69,7 +69,7 @@ var
 
 	// Used for matching numbers
     // source 方法获取正则表达式源文本，这里返回 "[+-]?(?:\d*\.|)\d+(?:[eE][+-]?\d+|)" ，类型为 "string"
-    // 匹配数组，包括正负号、科学计数法、.开头等多种情况的数字
+    // 匹配数字，包括正负号、科学计数法、.开头等多种情况的数字
 	core_pnum = /[+-]?(?:\d*\.|)\d+(?:[eE][+-]?\d+|)/.source,
 
 
@@ -5527,6 +5527,7 @@ jQuery.support = (function( support ) {
     div.style.backgroundColor = 'red';
     div.cloneNode(true).style.backgroundColor = '';
     console.log(div.style.backgroundColor);
+	// red
 
     ie 浏览器返回空，也就是说，克隆一个节点后，给新节点背景属性赋值，源节点的背景属性也被修改了
 
@@ -5535,7 +5536,8 @@ jQuery.support = (function( support ) {
     var div = $('<div>');
     div.css('backgroundColor','red');
     div.clone().css('backgroundColor','');
-    console.log('div.css('backgroundColor',''));
+    console.log(div.css('backgroundColor'));
+	// red
     
     这样所有浏览器都返回 red
     */
@@ -12013,6 +12015,21 @@ function showHide( elements, show ) {
 
 jQuery.fn.extend({
 	css: function( name, value ) {
+		/*
+		这里说的 this 都是指调用 jQuery.fn.css 方法的 jQuery 实例对象
+		(1) value 有值的情况
+		① name 和 value 都是字符串等非函数值
+		   -> for 循环：fn( this[i], name, value )
+		   -> return this
+		② name == undefined，value 是字符串等非函数值（用 value 渠道 name）
+		   -> fn.call ( this, value )
+		   -> return this
+		③ name == undefined，value 是函数，稍微复杂，不在这里写
+		
+		(2) value 没值的情况，value == undefined
+		① name 为字符串
+		   -> fn( this[0], name )
+		*/
 		return jQuery.access( this, function( elem, name, value ) {
 			var styles, len,
 				map = {},
@@ -12028,26 +12045,36 @@ jQuery.fn.extend({
 				for ( ; i < len; i++ ) {
 					map[ name[ i ] ] = jQuery.css( elem, name[ i ], false, styles );
 				}
-
+				
+				// name 是数组的时候，返回数组里的所有属性对应的属性值（最终渲染的）
 				return map;
 			}
 
+			/*
+			① value 不为 undefined，设置值 jQuery.style( elem, name, value )
+			② value 为 undefined，获取值 jQuery.css( elem, name )
+			*/
 			return value !== undefined ?
 				jQuery.style( elem, name, value ) :
 				jQuery.css( elem, name );
 		}, name, value, arguments.length > 1 );
 	},
+	// 显示 this 下面的所有元素
 	show: function() {
 		return showHide( this, true );
 	},
+	// 隐藏 this 下面的所有元素
 	hide: function() {
 		return showHide( this );
 	},
+	// 显示/隐藏 状态切换
 	toggle: function( state ) {
+		// 参数是布尔值，强制 this 下所有的元素 显示/隐藏
 		if ( typeof state === "boolean" ) {
 			return state ? this.show() : this.hide();
 		}
 
+		// 参数不是布尔值，针对 this 下每一个元素，隐藏的显示，显示的隐藏
 		return this.each(function() {
 			if ( isHidden( this ) ) {
 				jQuery( this ).show();
@@ -12096,7 +12123,7 @@ jQuery.extend({
 	},
 
 	// Get and set the style property on a DOM Node
-	// 获取或者设置元素 css 属性 
+	// 获取或者设置元素 style 属性 
 	style: function( elem, name, value, extra ) {
 		// Don't set styles on text and comment nodes
 		// 文本节点和注释节点，直接返回
@@ -12107,7 +12134,7 @@ jQuery.extend({
 		// Make sure that we're working with the right name
 		var ret, type, hooks,
 			/*
-			jQuery.camelCase 将 css 属性名转成驼峰写法：
+			jQuery.camelCase 将 css 属性名转成驼峰写法（将 - 后面的字母转成大写）：
 			eg:
 			margin-top -> marginTop
 			-moz-transform -> MozTransform
@@ -12126,21 +12153,89 @@ jQuery.extend({
 		   a. vendorPropName( style, origName ) 返回修正后的 origName
 		   b. 将这个修正后的 origName 存入 jQuery.cssProps 对象
 		   c. 将这个修正后的 origName 赋值给 name
+
+		总之，name 就是 css 属性名在 style 对象中对应的属性名
+		
+		列 2 个的 style 属性名举例：
+		(1) "border" 
+		    -> origName = jQuery.camelCase( "border" )
+			-> origName = "border"
+			-> vendorPropName( style, "border" )
+			-> name = "border"
+		(2) "border-bottom"
+		    -> origName = jQuery.camelCase( "border-bottom" )
+			-> origName = "borderBottom"
+			-> vendorPropName( style, "borderBottom" )
+			-> name = "borderBottom"
 		*/
 		name = jQuery.cssProps[ origName ] || ( jQuery.cssProps[ origName ] = vendorPropName( style, origName ) );
 
+		/*
+		jQuery.cssHooks : {
+			borderWidth : {
+				expand : function(){},
+				set : function(){}
+			},
+			height : {
+				get : function(){},
+				set : function(){}
+			},
+			margin : {
+				expand : function(){}
+			},
+			opacity : {
+				get : function(){}
+			},
+			padding : {
+				expand : function(){},
+				set : function(){}
+			},
+			width : {
+				get : function(){},
+				set : function(){}
+			}
+		}
+		*/
 		// gets hook for the prefixed version
 		// followed by the unprefixed version
 		hooks = jQuery.cssHooks[ name ] || jQuery.cssHooks[ origName ];
 
 		// Check if we're setting a value
+		// 有 value 值，表示设置
 		if ( value !== undefined ) {
 			type = typeof value;
 
+
+			/*
+			rrelNum = new RegExp( "^([+-])=(" + core_pnum + ")", "i" )
+			① core_pnum 匹配数字，包括正负号、科学计数法、.开头等多种情况的数字
+			② rrelNum 匹配 "+=3" 这种字符串，注意 = 左右不能有空格
+
+			rrelNum.exec("+=3") -> ["+=3", "+", "3", index: 0, input: "+=3"]
+			rrelNum.exec("+ =3") -> null
+			rrelNum.exec("+= 3") -> null
+
+			rrelNum.exec("-=3") -> ["-=3", "-", "3", index: 0, input: "-=3"]
+			*/
 			// convert relative number strings (+= or -=) to relative numbers. #7345
 			if ( type === "string" && (ret = rrelNum.exec( value )) ) {
+				/*
+				对于 ( ret[1] + 1 ) * ret[2]，举例（当然了，数组以下写法会报错的）：
+				① ret = rrelNum.exec("+=3") -> ["+=3", "+", "3", index: 0, input: "+=3"]
+				   -> ("+" + 1) * "3"
+				   -> "+1" * "3"
+				   -> 3
+
+				② ret = rrelNum.exec("-=3") -> ["-=3", "-", "3", index: 0, input: "-=3"]
+				   -> ("-" + 1) * "3"
+				   -> "-1" * "3"
+				   -> -3
+
+				value = 相对值 + 原来的值
+				*/
 				value = ( ret[1] + 1 ) * ret[2] + parseFloat( jQuery.css( elem, name ) );
 				// Fixes bug #9237
+				// 经过以上操作，type 已经转为 number 类型了
 				type = "number";
 			}
 
@@ -12150,21 +12245,51 @@ jQuery.extend({
 			}
 
 			// If a number was passed in, add 'px' to the (except for certain CSS properties)
+			/*
+			当 value 为 number 类型时，排除一些不能加 'px' 的，剩下的都要加 'px'
+			比如：
+			① zIndex、opacity、zoom 等应该是纯数字
+			② width、height 等数字后要跟 'px'
+			*/
 			if ( type === "number" && !jQuery.cssNumber[ origName ] ) {
 				value += "px";
 			}
 
 			// Fixes #8908, it can be done more correctly by specifying setters in cssHooks,
 			// but it would mean to define eight (for every problematic property) identical functions
+			/*
+			关于 jQuery.support.clearCloneStyle ，举个例子：
+			
+			var div = document.createElement('div');
+			div.style.backgroundColor = 'red';
+			div.cloneNode(true).style.backgroundColor = '';
+			console.log(div.style.backgroundColor);
+			// red
+
+			克隆一个节点后，给新的节点背景颜色值设为 ''，那么源节点的背景颜色应该保持不变才对，
+			大多数浏览器打印结果都是 'red'；可是，ie 浏览器偏不，打印结果是 ''
+
+			除了背景色 backgroundColor，其他的背景属性 backgroundXxx 都有这个问题
+
+			满足以下条件，就将 style[ name ] = "" 写成 style[ name ] = "inherit"
+			*/
 			if ( !jQuery.support.clearCloneStyle && value === "" && name.indexOf("background") === 0 ) {
 				style[ name ] = "inherit";
 			}
 
 			// If a hook was provided, use that value, otherwise just set the specified value
+			/*
+			这种判断条件挺巧妙的：
+			① 如果 !hooks || !("set" in hooks) ，则直接执行 style[ name ] = value;
+			② 如果 ① 的条件不满足，则执行 (value = hooks.set( elem, value, extra ))
+			   这里就用了钩子方法的设置操作
+			③ a. 如果 ② 的执行结果为 undefined，结束
+			   b. 如果 ② 的执行结果不为 undefined，则继续执行 style[ name ] = value;
+			*/
 			if ( !hooks || !("set" in hooks) || (value = hooks.set( elem, value, extra )) !== undefined ) {
 				style[ name ] = value;
 			}
-
+		// value === undefined 获取值
 		} else {
 			// If a hook was provided get the non-computed value from there
 			if ( hooks && "get" in hooks && (ret = hooks.get( elem, false, extra )) !== undefined ) {
@@ -12176,11 +12301,19 @@ jQuery.extend({
 		}
 	},
 
+	// 获取元素最终的属性值（大部分情况下通过 curCSS 方法获取）
 	css: function( elem, name, extra, styles ) {
 		var val, num, hooks,
+			/*
+			jQuery.camelCase 会将 - 后面的字母转成大写	
+			eg:
+			jQuery.camelCase( 'border' )  -> "border"
+			jQuery.camelCase( 'margin-top' )  -> "marginTop"
+			*/
 			origName = jQuery.camelCase( name );
 
 		// Make sure that we're working with the right name
+		// name 就是 css 属性名在 style 对象中对应的属性名
 		name = jQuery.cssProps[ origName ] || ( jQuery.cssProps[ origName ] = vendorPropName( elem.style, origName ) );
 
 		// gets hook for the prefixed version
@@ -12193,10 +12326,19 @@ jQuery.extend({
 		}
 
 		// Otherwise, if a way to get the computed value exists, use that
+		// 如果上面的钩子方法没有得到值，那就获取渲染的值
 		if ( val === undefined ) {
 			val = curCSS( elem, name, styles );
 		}
 
+		
+		/*
+		① cssNormalTransform = {
+			letterSpacing: 0,
+			fontWeight: 400
+		}
+		② 将 "normal" 转成数字
+		*/
 		//convert "normal" to computed value
 		if ( val === "normal" && name in cssNormalTransform ) {
 			val = cssNormalTransform[ name ];
@@ -12211,8 +12353,14 @@ jQuery.extend({
 	}
 });
 
+// 获取元素的最终渲染后得到的属性值（少数属性值需要修正）
 curCSS = function( elem, name, _computed ) {
 	var width, minWidth, maxWidth,
+		/*
+	    ① getStyles( elem ) 获取元素 elem 最终的样式
+		② 如果已经算好了最终样式 _computed，那就用这个 _computed
+		③ 否则重新算 getStyles( elem )
+		*/
 		computed = _computed || getStyles( elem ),
 
 		// Support: IE9
@@ -12221,8 +12369,12 @@ curCSS = function( elem, name, _computed ) {
 		style = elem.style;
 
 	if ( computed ) {
-
+		// ret === "" 并且 elem 不在文档中
 		if ( ret === "" && !jQuery.contains( elem.ownerDocument, elem ) ) {
+			/*
+			① jQuery.styl 会先从钩子方法获取属性
+			② 如果 ① 中没有获取到，直接从 elem.style 获取
+			*/
 			ret = jQuery.style( elem, name );
 		}
 
@@ -12230,29 +12382,72 @@ curCSS = function( elem, name, _computed ) {
 		// A tribute to the "awesome hack by Dean Edwards"
 		// Safari 5.1.7 (at least) returns percentage for a larger set of values, but width seems to be reliably pixels
 		// this is against the CSSOM draft spec: http://dev.w3.org/csswg/cssom/#resolved-values
+		/*
+		① rnumnonpx = new RegExp( "^(" + core_pnum + ")(?!px)[a-z%]+$", "i" )
+		例如：
+		rnumnonpx.test('20px') -> false
+
+		rnumnonpx.test('20abc') -> true
+		rnumnonpx.test('20%') -> true
+
+		② rmargin = /^margin/
+		rmargin.test('margin-top') -> true
+		*/
+		// 针对 name 是 /^margin/ 并且值是百分数的情况，修正 ret 
 		if ( rnumnonpx.test( ret ) && rmargin.test( name ) ) {
 
 			// Remember the original values
+			// 保存原来的值
 			width = style.width;
 			minWidth = style.minWidth;
 			maxWidth = style.maxWidth;
+			
+			/*
+			改变 elem.style 的属性，会立即改变 computed，举个例子：
+			<div id="div1">div1</div>
 
+			computed =  getStyles( div1 );
+			console.log(computed.width) -> "auto"
+
+			div1.style.width = '100px';
+			console.log(computed.width) -> "100px"
+			*/
 			// Put in the new values to get a computed value out
 			style.minWidth = style.maxWidth = style.width = ret;
 			ret = computed.width;
 
 			// Revert the changed values
+			// 恢复原来的值
 			style.width = width;
 			style.minWidth = minWidth;
 			style.maxWidth = maxWidth;
 		}
 	}
 
+	// 绝大多数情况，不需要修正，直接在这里返回 getStyles( elem )[name]
 	return ret;
 };
 
-
+// 从一段字符串里取出 '12px' 这样的【数值+单位】的子串
 function setPositiveNumber( elem, value, subtract ) {
+	/*
+	整个函数都没用到 elem 变量，为什么？
+
+	rnumsplit = new RegExp( "^(" + core_pnum + ")(.*)$", "i" ) 把字符串中的数字匹配出来
+	其中 . 表示除换行符以外的任意字符
+
+	eg :
+	rnumsplit.exec('1.2') -> ["1.2", "1.2", "", index: 0, input: "1.2"]
+	rnumsplit.exec('1abc') -> ["1abc", "1", "abc", index: 0, input: "1abc"]
+
+	① 如果字符串 value 中不包含数字，那就直接返回这个字符串
+
+	② Math.max( 0, matches[ 1 ] - ( subtract || 0 ) ) + ( matches[ 2 ] || "px" )
+	   数值 + 单位（默认是 'px'）
+
+	   a. 数值 Math.max( 0, matches[ 1 ] - ( subtract || 0 ) ) 
+	   b. 单位 ( matches[ 2 ] || "px" )   
+	*/
 	var matches = rnumsplit.exec( value );
 	return matches ?
 		// Guard against undefined "subtract", e.g., when used as in cssHooks
@@ -12261,6 +12456,12 @@ function setPositiveNumber( elem, value, subtract ) {
 }
 
 function augmentWidthOrHeight( elem, name, extra, isBorderBox, styles ) {
+	/*
+	① extra === ( isBorderBox ? "border" : "content" ) —> i = 4
+	② 否则:
+	   a. name === "width" -> i = 1 
+	   b. name !== "width" -> i = 0
+	*/
 	var i = extra === ( isBorderBox ? "border" : "content" ) ?
 		// If we already have the right measurement, avoid augmentation
 		4 :
@@ -12268,10 +12469,27 @@ function augmentWidthOrHeight( elem, name, extra, isBorderBox, styles ) {
 		name === "width" ? 1 : 0,
 
 		val = 0;
+	
+	/*
+	① i 为 4 ，不会进入下面的循环，直接返回 0
+	② i 为 1 或 0 ，执行 2 次循环
 
+	a. i 为 1，name === "width"
+	   下面循环两次，其实是 i 为 1 和 3，以 extra === "margin" 为例，对应：
+		extra + cssExpand[ 1 ] -> "marginRight"
+		extra + cssExpand[ 3 ] -> "marginLeft"
+	b. i 为 0，name === "height"
+	   下面循环两次，其实是 i 为 0 和 2，以 extra === "margin" 为例，对应：
+		extra + cssExpand[ 0 ] -> "marginTop"
+		extra + cssExpand[ 2 ] -> "marginBottom"
+ 	
+	*/
 	for ( ; i < 4; i += 2 ) {
 		// both box models exclude margin, so add it if we want it
 		if ( extra === "margin" ) {
+			/*
+			cssExpand = [ "Top", "Right", "Bottom", "Left" ]
+			*/
 			val += jQuery.css( elem, extra + cssExpand[ i ], true, styles );
 		}
 
