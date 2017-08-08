@@ -12455,6 +12455,7 @@ function setPositiveNumber( elem, value, subtract ) {
 		value;
 }
 
+// 针对 extra 的 width/height 修正值
 function augmentWidthOrHeight( elem, name, extra, isBorderBox, styles ) {
 	/*
 	① extra === ( isBorderBox ? "border" : "content" ) —> i = 4
@@ -12488,11 +12489,25 @@ function augmentWidthOrHeight( elem, name, extra, isBorderBox, styles ) {
 		// both box models exclude margin, so add it if we want it
 		if ( extra === "margin" ) {
 			/*
-			cssExpand = [ "Top", "Right", "Bottom", "Left" ]
+			① cssExpand = [ "Top", "Right", "Bottom", "Left" ]
+            ② jQuery.css 方法第三个参数是 true，表示最终结果会转为为 number 类型
+            ③ 不管是 content-box 还是 border-box 算整个元素框尺寸时都要加上 margin
 			*/
 			val += jQuery.css( elem, extra + cssExpand[ i ], true, styles );
 		}
-
+        /*
+         border-box 包括 padding 和 border，所以有：
+         ① extra === "margin"
+            val += jQuery.css( elem, extra + cssExpand[ i ], true, styles );
+         ② extra === "border"
+            不会进入 for 循环，不用修正
+         ③ extra === "padding"
+            val -= jQuery.css( elem, "border" + cssExpand[ i ] + "Width", true, styles );
+         ④ extra === "content"
+            val -= jQuery.css( elem, "padding" + cssExpand[ i ], true, styles );
+            val -= jQuery.css( elem, "border" + cssExpand[ i ] + "Width", true, styles );
+         */
+        
 		if ( isBorderBox ) {
 			// border-box includes padding, so remove it if we want content
 			if ( extra === "content" ) {
@@ -12503,6 +12518,20 @@ function augmentWidthOrHeight( elem, name, extra, isBorderBox, styles ) {
 			if ( extra !== "margin" ) {
 				val -= jQuery.css( elem, "border" + cssExpand[ i ] + "Width", true, styles );
 			}
+        /*
+        content-box 不包括 padding 和 border，所以有：
+        ① extra === "margin"
+           val += jQuery.css( elem, extra + cssExpand[ i ], true, styles );
+           val += jQuery.css( elem, "padding" + cssExpand[ i ], true, styles );
+           val += jQuery.css( elem, "border" + cssExpand[ i ] + "Width", true, styles );
+        ② extra === "border"
+           val += jQuery.css( elem, "padding" + cssExpand[ i ], true, styles );
+           val += jQuery.css( elem, "border" + cssExpand[ i ] + "Width", true, styles );
+        ③ extra === "padding"
+           val += jQuery.css( elem, "padding" + cssExpand[ i ], true, styles );
+        ④ extra === "content"
+           不会进入 for 循环，不用修正
+         */
 		} else {
 			// at this point, extra isn't content, so add padding
 			val += jQuery.css( elem, "padding" + cssExpand[ i ], true, styles );
@@ -12517,10 +12546,15 @@ function augmentWidthOrHeight( elem, name, extra, isBorderBox, styles ) {
 	return val;
 }
 
+// 针对 extra 的 width/height 值
 function getWidthOrHeight( elem, name, extra ) {
 
 	// Start with offset property, which is equivalent to the border-box value
 	var valueIsBorderBox = true,
+        /*
+        ① offsetWidth 包括 width + padding + border，相当于怪异模式下就是 width
+        ② offsetHeight 包括 height + padding + border，相当于怪异模式下就是 height
+         */
 		val = name === "width" ? elem.offsetWidth : elem.offsetHeight,
 		styles = getStyles( elem ),
 		isBorderBox = jQuery.support.boxSizing && jQuery.css( elem, "boxSizing", false, styles ) === "border-box";
@@ -12530,18 +12564,39 @@ function getWidthOrHeight( elem, name, extra ) {
 	// MathML - https://bugzilla.mozilla.org/show_bug.cgi?id=491668
 	if ( val <= 0 || val == null ) {
 		// Fall back to computed then uncomputed css if necessary
+        // 首先获取最终的渲染值
 		val = curCSS( elem, name, styles );
+        // 不行的话，再获取 style 属性
 		if ( val < 0 || val == null ) {
 			val = elem.style[ name ];
 		}
 
 		// Computed unit is not pixels. Stop here and return.
+        /*
+        rnumnonpx = new RegExp( "^(" + core_pnum + ")(?!px)[a-z%]+$", "i" ) 不带 px 单位
+        例如：
+        rnumnonpx.test('20px') -> false
+
+        rnumnonpx.test('20abc') -> true
+        rnumnonpx.test('20%') -> true
+
+        不带 px 单位，直接在这里返回值
+         */
 		if ( rnumnonpx.test(val) ) {
 			return val;
 		}
 
 		// we need the check for style in case a browser which returns unreliable values
 		// for getComputedStyle silently falls back to the reliable elem.style
+        /*
+        support.boxSizingReliable = ( window.getComputedStyle( div, null ) || { width: "4px" } ).width === "4px";
+        
+        在怪异模式（border-box）下：
+        ① IE 下，width 不等于 4px，需要减去 padding，border
+        ② 其他浏览器，width 都是 4px
+
+        也就是说，怪异模式下的 ie，应该当做 content-box 来求值
+         */
 		valueIsBorderBox = isBorderBox && ( jQuery.support.boxSizingReliable || val === elem.style[ name ] );
 
 		// Normalize "", auto, and prepare for extra
