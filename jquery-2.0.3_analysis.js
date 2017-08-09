@@ -11770,11 +11770,6 @@ jQuery.fn.extend({
 
 
 
-
-
-
-
-
 var curCSS, iframe,
 	// swappable if display is none or starts with table except "table", "table-cell", or "table-caption"
 	// see here for display values: https://developer.mozilla.org/en-US/docs/CSS/display
@@ -12292,6 +12287,13 @@ jQuery.extend({
 		// value === undefined 获取值
 		} else {
 			// If a hook was provided get the non-computed value from there
+			/*
+			注意：hooks.get() 方法第二个参数是 false 表示取 non-computed 值，以 jQuery.cssHooks[ "width" ] 为例：
+			jQuery.cssHooks[ "width" ].get = function( elem, computed, extra ) {
+				if ( computed ) {...}
+			}
+			所以，当 computed 为 false 时，这里返回默认值 undefined
+			*/
 			if ( hooks && "get" in hooks && (ret = hooks.get( elem, false, extra )) !== undefined ) {
 				return ret;
 			}
@@ -12687,9 +12689,35 @@ jQuery.each([ "height", "width" ], function( i, name ) {
 	jQuery.cssHooks[ name ] = {
 		get: function( elem, computed, extra ) {
 			if ( computed ) {
+				/*
+				① rdisplayswap = /^(none|table(?!-c[ea]).+)/ 匹配 none 或 table 开头但后面不跟 -c[ea]
+				eg:
+				rdisplayswap.test('none')			 -> true
+				rdisplayswap.test('table-column')    -> true
+				rdisplayswap.test('table-row-group') -> true
+
+				rdisplayswap.test('table-cell') -> false
+				rdisplayswap.test('inline')		-> false
+				② 有些元素在计算尺寸信息时，需要将其显示才能算
+				<div id="div1" style="width:100px;height:100px;background:red">aaa</div>
+    
+				a. $('#div1').width() // 100
+
+				还可以这样获取：
+				b. $('#div1').get(0).offsetWidth  // 100
+
+				不过，当把这个 div 隐藏（display:none）后，a 还是可以得到 100，而 b 只能得到 0
+				*/
 				// certain elements can have dimension info if we invisibly show them
 				// however, it must have a current display style that would benefit from this
 				return elem.offsetWidth === 0 && rdisplayswap.test( jQuery.css( elem, "display" ) ) ?
+					/*
+					① jQuery.swap 作用：给元素 elem 加上样式 cssShow 使得元素显示出来，计算完尺寸后，再将样式还原
+					② cssShow = { position: "absolute", visibility: "hidden", display: "block" }
+					   这三个属性配合一起使用，可使得元素内容既看不见，又不占据空间，还可以计算尺寸
+					③ 属性替换完了，执行  getWidthOrHeight( elem, name, extra ) 获取尺寸
+					④ 还原属性
+					*/
 					jQuery.swap( elem, cssShow, function() {
 						return getWidthOrHeight( elem, name, extra );
 					}) :
@@ -12699,6 +12727,11 @@ jQuery.each([ "height", "width" ], function( i, name ) {
 
 		set: function( elem, value, extra ) {
 			var styles = extra && getStyles( elem );
+			/*
+			① value 表示 width/height 值
+			② augmentWidthOrHeight(...) 表示 width/height 的修正值 subtract
+			③ 最终设置的值是：Math.max( 0, value - 修正值)
+			*/
 			return setPositiveNumber( elem, value, extra ?
 				augmentWidthOrHeight(
 					elem,
@@ -12716,6 +12749,7 @@ jQuery.each([ "height", "width" ], function( i, name ) {
 // for it is not run until after DOM ready
 jQuery(function() {
 	// Support: Android 2.3
+	// 有的浏览器 marginRight 计算不准确
 	if ( !jQuery.support.reliableMarginRight ) {
 		jQuery.cssHooks.marginRight = {
 			get: function( elem, computed ) {
@@ -12723,6 +12757,12 @@ jQuery(function() {
 					// Support: Android 2.3
 					// WebKit Bug 13343 - getComputedStyle returns wrong value for margin-right
 					// Work around by temporarily setting element display to inline-block
+					/*
+					① 有的元素 marginRight 计算不准确，所以用这个钩子方法来算
+					② 将元素的 display 属性暂时替换为 "inline-block"
+					③ 计算 curCSS( elem, "marginRight" )
+					④ 最后将 display 属性还原
+					*/
 					return jQuery.swap( elem, { "display": "inline-block" },
 						curCSS, [ elem, "marginRight" ] );
 				}
@@ -12733,6 +12773,11 @@ jQuery(function() {
 	// Webkit bug: https://bugs.webkit.org/show_bug.cgi?id=29084
 	// getComputedStyle returns percent when specified for top/left/bottom/right
 	// rather than make the css module depend on the offset module, we just check for it here
+	/*
+	① 当元素属性是百分数时，只有 Safari 返回百分数，其他浏览器都会返回像素值
+	② 这里指返回百分数并且 jQuery.fn.position 方法存在的情况下
+	③ 修正为像素值
+	*/
 	if ( !jQuery.support.pixelPosition && jQuery.fn.position ) {
 		jQuery.each( [ "top", "left" ], function( i, prop ) {
 			jQuery.cssHooks[ prop ] = {
@@ -12740,6 +12785,17 @@ jQuery(function() {
 					if ( computed ) {
 						computed = curCSS( elem, prop );
 						// if curCSS returns percentage, fallback to offset
+						/*
+						① rnumnonpx = new RegExp( "^(" + core_pnum + ")(?!px)[a-z%]+$", "i" )
+						   匹配百分数形式
+
+						   例如：
+						   rnumnonpx.test('20px') -> false
+
+						   rnumnonpx.test('20%') -> true
+						② 如果 computed 是百分数，那就调用 jQuery( elem ).position()[ prop ] 获取像素值
+						   否则，就用 computed
+						*/
 						return rnumnonpx.test( computed ) ?
 							jQuery( elem ).position()[ prop ] + "px" :
 							computed;
@@ -12752,12 +12808,21 @@ jQuery(function() {
 });
 
 if ( jQuery.expr && jQuery.expr.filters ) {
+	/*
+	① 给 jQuery.expr.filters 对象加上 hidden、visible 等两个方法
+
+	② HTMLElement.offsetWidth 是一个只读属性，返回一个元素的布局宽度。
+	一个典型的 offsetWidth 是测量元素的边框(border)、水平线上的内边距(padding)、竖直方向滚动条(scrollbar)（如果存在的话）、以及CSS设置的宽度(width)的值。
+	
+	HTMLElement.offsetHeight 同理
+	*/
 	jQuery.expr.filters.hidden = function( elem ) {
 		// Support: Opera <= 12.12
 		// Opera reports offsetWidths and offsetHeights less than zero on some elements
 		return elem.offsetWidth <= 0 && elem.offsetHeight <= 0;
 	};
-
+	
+	// 返回值和 hidden 函数相反
 	jQuery.expr.filters.visible = function( elem ) {
 		return !jQuery.expr.filters.hidden( elem );
 	};
@@ -12769,6 +12834,10 @@ jQuery.each({
 	padding: "",
 	border: "Width"
 }, function( prefix, suffix ) {
+	/*
+	① prefix 指 margin、padding、border
+	② suffix 指 ""、""、"Width"
+	*/
 	jQuery.cssHooks[ prefix + suffix ] = {
 		expand: function( value ) {
 			var i = 0,
@@ -12778,6 +12847,18 @@ jQuery.each({
 				parts = typeof value === "string" ? value.split(" ") : [ value ];
 
 			for ( ; i < 4; i++ ) {
+				/*
+				① cssExpand = [ "Top", "Right", "Bottom", "Left" ]
+				② 组成 marginTop、paddingTop、borderTopWidth 等属性名
+				③ 比如 value = "12px 24px 36px 48px"
+				   -> parts = ["12px", "24px", "36px", "48px"]
+				④ 以 marginLeft 为例：
+				   a. 如果 parts[ 3 ] 存在，值为 parts[ 3 ]；
+				   b. 以上不存在，值为 parts[ 1 ]；
+				   c. 还不存在，值为 parts[ 0 ]
+
+				   这就是 css 中的【值复制】机制
+				*/
 				expanded[ prefix + cssExpand[ i ] + suffix ] =
 					parts[ i ] || parts[ i - 2 ] || parts[ 0 ];
 			}
