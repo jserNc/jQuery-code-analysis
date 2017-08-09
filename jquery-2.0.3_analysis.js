@@ -10120,7 +10120,7 @@ jQuery.fn.extend({
 		return this.pushStack( winnow(this, selector || [], true) );
 	},
 
-	// 过滤调用该 filter 方法的 JQ 对象，然后叫链式调用的驱动对象交给过滤后的 JQ 对象
+	// 过滤调用该 filter 方法的 JQ 对象，然后将链式调用的驱动对象交给过滤后的 JQ 对象
 	filter: function( selector ) {
 		return this.pushStack( winnow(this, selector || [], false) );
 	},
@@ -12867,10 +12867,20 @@ jQuery.each({
 		}
 	};
 
+    /*
+    ① rmargin = /^margin/
+       rmargin.test('margin') -> true
+
+    ② jQuery.cssHooks[ "padding" ].set = setPositiveNumber
+       jQuery.cssHooks[ "borderWidth" ].set = setPositiveNumber
+
+    ③ setPositiveNumber ：从一段字符串里取出 '12px' 这样的【数值+单位】的子串
+     */
 	if ( !rmargin.test( prefix ) ) {
 		jQuery.cssHooks[ prefix + suffix ].set = setPositiveNumber;
 	}
 });
+
 var r20 = /%20/g,
 	rbracket = /\[\]$/,
 	rCRLF = /\r?\n/g,
@@ -12878,48 +12888,135 @@ var r20 = /%20/g,
 	rsubmittable = /^(?:input|select|textarea|keygen)/i;
 
 jQuery.fn.extend({
+    // $('form').serialize() -> "uid=1&username=%E5%BC%A0%E4%B8%89&password=123456&grade=3&sex=1&hobby=1&hobby=2"
 	serialize: function() {
 		return jQuery.param( this.serializeArray() );
 	},
+    /*
+    作用：返回将表单元素编码后的数组
+
+    例：
+    <form name="myForm" action="http://www.365mini.com" method="post">
+        <input name="uid" type="hidden" value="1" />
+        <input name="username" type="text" value="张三" />
+        <input name="password" type="text" value="123456" />
+        <select name="grade" id="grade">
+            <option value="1">一年级</option>
+            <option value="2">二年级</option>
+            <option value="3" selected="selected">三年级</option>
+            <option value="4">四年级</option>
+            <option value="5">五年级</option>
+            <option value="6">六年级</option>
+        </select>
+        <input name="sex" type="radio" checked="checked" value="1" />男
+        <input name="sex" type="radio" value="0" />女
+        <input name="hobby" type="checkbox" checked="checked" value="1" />游泳
+        <input name="hobby" type="checkbox" checked="checked" value="2" />跑步
+        <input name="hobby" type="checkbox" value="3" />羽毛球
+        <input name="btn" id="btn" type="button" value="点击" />
+    </form>
+
+    对<form>元素进行序列化可以直接序列化其内部的所有表单元素：
+    var formArray = $("form").serializeArray();
+    
+    以下是序列化后的结果数组formArray的内容：
+    [
+        { name: "uid", value: "1" },
+        { name: "username", value: "张三" },
+        { name: "password", value: "123456" },
+        { name: "grade", value: "3" },
+        { name: "sex", value: "1" },
+        { name: "hobby", value: "1" },
+        { name: "hobby", value: "2" }
+    ];
+
+     */
 	serializeArray: function() {
+        /*
+        jQuery.fn.map: function ( callback ) {
+            return this.pushStack( jQuery.map( this, function( elem, i ) {
+                return callback.call( elem, i, elem );
+            } ) );
+        }
+         */
+        // 第一步：将 form 下的所有表单元素找出来
 		return this.map(function(){
 			// Can add propHook for "elements" to filter or add form elements
+            /*
+            ① 这里的 this 是原生 dom 元素
+            ② jQuery.fn.map 会将返回的数组包装成 jQuery 对象
+            ③ elements 集合可返回包含表单中所有元素的数组，即 formObject.elements
+               元素在数组中出现的顺序和它们在表单的 HTML 源代码中出现的顺序相同。
+               每个元素都有一个 type 属性，其字符串值说明了元素的类
+             */ 
 			var elements = jQuery.prop( this, "elements" );
 			return elements ? jQuery.makeArray( elements ) : this;
 		})
+        // 第二步：将有选中值的 input/option 元素过滤出来
 		.filter(function(){
 			var type = this.type;
 			// Use .is(":disabled") so that fieldset[disabled] works
+            /*
+            ① rsubmittable = /^(?:input|select|textarea|keygen)/i
+            rsubmittable.test( this.nodeName )
+            节点名必须是以上类型
+
+            ② rsubmitterTypes = /^(?:submit|button|image|reset|file)$/i
+            !rsubmitterTypes.test( type )
+            节点的 type 属性不能是以上类型
+
+            ③ manipulation_rcheckableType = /^(?:checkbox|radio)$/i
+            !manipulation_rcheckableType.test( type )
+             */
 			return this.name && !jQuery( this ).is( ":disabled" ) &&
 				rsubmittable.test( this.nodeName ) && !rsubmitterTypes.test( type ) &&
 				( this.checked || !manipulation_rcheckableType.test( type ) );
 		})
+        // 第三步：依次将选中元素转成 { name: "sex", value: "1" } 形式
 		.map(function( i, elem ){
 			var val = jQuery( this ).val();
 
 			return val == null ?
 				null :
+                // checkbox 这种，返回值是数组
 				jQuery.isArray( val ) ?
 					jQuery.map( val, function( val ){
+                        // rCRLF = /\r?\n/g
 						return { name: elem.name, value: val.replace( rCRLF, "\r\n" ) };
 					}) :
+                    // radio 这种，返回单个值
 					{ name: elem.name, value: val.replace( rCRLF, "\r\n" ) };
 		}).get();
+        // 最后，jQuery.fn.get() 方法，用于将 jQuery 对象转成原生数组
 	}
 });
 
 //Serialize an array of form elements or a set of
 //key/values into a query string
+/*
+作用：创建数组或对象的序列化表示
+a：要进行序列化的数组或对象
+traditional：规定是否使用传统的方式浅层进行序列化（参数序列化）
+ */
 jQuery.param = function( a, traditional ) {
 	var prefix,
 		s = [],
 		add = function( key, value ) {
 			// If value is a function, invoke it and return its value
+            /*
+            ① 如果 value 是函数，那就执行这个函数，并将函数返回值给 value
+            ② 如果 value 不是函数也不是 null/undefined，那 value 不变，否则 value 为 ""
+             */
 			value = jQuery.isFunction( value ) ? value() : ( value == null ? "" : value );
+            /*
+            ① 给 s[ s.length ] 赋值，相当于数组长度加 1，并且在数组默认插入新值，这种写法相当于 s.push()
+            ② 插入的新值是 encodeURIComponent 编码后的字符串
+             */
 			s[ s.length ] = encodeURIComponent( key ) + "=" + encodeURIComponent( value );
 		};
 
 	// Set traditional to true for jQuery <= 1.3.2 behavior.
+    // 如果这里没有设置 traditional 的值，那就取 jQuery.ajaxSettings.traditional 的全局设置
 	if ( traditional === undefined ) {
 		traditional = jQuery.ajaxSettings && jQuery.ajaxSettings.traditional;
 	}
@@ -12934,33 +13031,56 @@ jQuery.param = function( a, traditional ) {
 	} else {
 		// If traditional, encode the "old" way (the way 1.3.2 or older
 		// did it), otherwise encode params recursively.
+        // 深度递归的方式序列化对象
 		for ( prefix in a ) {
 			buildParams( prefix, a[ prefix ], traditional, add );
 		}
 	}
 
 	// Return the resulting serialization
+    /*
+    ① r20 = /%20/g 表示空格
+    ② 键值对用 "&" 拼成字符串，然后用 + 替换 空格
+     */ 
 	return s.join( "&" ).replace( r20, "+" );
 };
 
+// 供 jQuery.param 方法调用，以创建序列号字符串
 function buildParams( prefix, obj, traditional, add ) {
 	var name;
 
+    // obj 是数组
 	if ( jQuery.isArray( obj ) ) {
 		// Serialize array item.
 		jQuery.each( obj, function( i, v ) {
+            /*
+            ① rbracket = /\[\]$/ 匹配 [] 结尾
+            eg: rbracket.test('[]') -> true
+            ② 下面非传统方式中，如果 v 不是 object，则以 [] 结尾
+             */
 			if ( traditional || rbracket.test( prefix ) ) {
 				// Treat each array item as a scalar.
+                /*
+                ① obj 是数组，以 prefix 为键，以 v 为值
+                ② add 方法在 jQuery.param 方法中定义，这里调用 add 方法会修改数组 s
+                 */ 
 				add( prefix, v );
 
 			} else {
 				// Item is non-scalar (array or object), encode its numeric index.
+                /*
+                ① typeof v === "object"
+                buildParams( prefix+"[i]", v, traditional, add )
+                ② typeof v !== "object"
+                buildParams( prefix+"[]", v, traditional, add )
+                 */
 				buildParams( prefix + "[" + ( typeof v === "object" ? i : "" ) + "]", v, traditional, add );
 			}
 		});
-
+    // 非传统方式，并且 obj 是对象
 	} else if ( !traditional && jQuery.type( obj ) === "object" ) {
 		// Serialize object item.
+        // 递归
 		for ( name in obj ) {
 			buildParams( prefix + "[" + name + "]", obj[ name ], traditional, add );
 		}
@@ -12970,6 +13090,7 @@ function buildParams( prefix, obj, traditional, add ) {
 		add( prefix, obj );
 	}
 }
+
 jQuery.each( ("blur focus focusin focusout load resize scroll unload click dblclick " +
 	"mousedown mouseup mousemove mouseover mouseout mouseenter mouseleave " +
 	"change select submit keydown keypress keyup error contextmenu").split(" "), function( i, name ) {
