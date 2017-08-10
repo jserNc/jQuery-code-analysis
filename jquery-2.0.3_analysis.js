@@ -13721,6 +13721,7 @@ jQuery.extend({
 						if ( state < 2 ) {
 							for ( code in map ) {
 								// Lazy-add the new callback in a way that preserves old ones
+                                // statusCode = s.statusCode || {}
 								statusCode[ code ] = [ statusCode[ code ], map[ code ] ];
 							}
 						} else {
@@ -13733,6 +13734,7 @@ jQuery.extend({
 
 				// Cancel the request
 				abort: function( statusText ) {
+                    // strAbort = "canceled" 默认的 abort 信息
 					var finalText = statusText || strAbort;
 					if ( transport ) {
 						transport.abort( finalText );
@@ -13743,6 +13745,11 @@ jQuery.extend({
 			};
 
 		// Attach deferreds
+        /*
+        deferred.promise : function ( obj ) {
+            return obj != null ? jQuery.extend( obj, promise ) : promise;
+        }
+         */
 		deferred.promise( jqXHR ).complete = completeDeferred.add;
 		jqXHR.success = jqXHR.done;
 		jqXHR.error = jqXHR.fail;
