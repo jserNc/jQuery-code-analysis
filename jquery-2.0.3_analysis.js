@@ -13124,22 +13124,26 @@ jQuery.fn.extend({
 	hover: function( fnOver, fnOut ) {
 		return this.mouseenter( fnOver ).mouseleave( fnOut || fnOver );
 	},
-
+	// 把事件绑定在元素上，非委托
 	bind: function( types, data, fn ) {
 		return this.on( types, null, data, fn );
 	},
+	// 解除事件绑定，非委托
 	unbind: function( types, fn ) {
 		return this.off( types, null, fn );
 	},
-
+	// 事件绑定，可以委托，也可以不委托
 	delegate: function( selector, types, data, fn ) {
 		return this.on( types, selector, data, fn );
 	},
+	// 解除事件绑定
 	undelegate: function( selector, types, fn ) {
 		// ( namespace ) or ( selector, types [, fn] )
 		return arguments.length === 1 ? this.off( selector, "**" ) : this.off( types, selector || "**", fn );
 	}
 });
+
+
 var
 	// Document location
 	ajaxLocParts,
@@ -13179,29 +13183,55 @@ var
 	transports = {},
 
 	// Avoid comment-prolog char sequence (#10098); must appease lint and evade compression
+	// 这么写是为了避免解析成注释，导致压缩的时候出错？
 	allTypes = "*/".concat("*");
+
 
 // #8138, IE may throw an exception when accessing
 // a field from window.location if document.domain has been set
 try {
+	// 一般写法，返回当前页面地址
 	ajaxLocation = location.href;
 } catch( e ) {
 	// Use the href attribute of an A element
 	// since IE will modify it given document.location
+	// 兼容写法，返回当前页面地址
 	ajaxLocation = document.createElement( "a" );
 	ajaxLocation.href = "";
 	ajaxLocation = ajaxLocation.href;
 }
 
+/*
+rurl = /^([\w.+-]+:)(?:\/\/([^\/?#:]*)(?::(\d+)|)|)/ 
+匹配 url 中协议、域名和端口部分
+
+eg：
+url = "http://www.nanchao.win:80/tags/js:Search?search=jq&go=Go"
+rurl.exec(url);
+-> ["http://www.nanchao.win:80", "http:", "www.nanchao.win", "80", index: 0, input: "http://www.nanchao.win:80/tags/js:Search?search=jq&go=Go"]
+*/
 // Segment location into parts
 ajaxLocParts = rurl.exec( ajaxLocation.toLowerCase() ) || [];
 
+
+/*
+jQuery.extend({
+     * 前置过滤器
+    ajaxPrefilter: addToPrefiltersOrTransports(prefilters),
+
+     * 请求分发器
+    ajaxTransport: addToPrefiltersOrTransports(transports),
+});
+前置过滤器 和 请求分发器 都是由这个 addToPrefiltersOrTransports 方法生成
+*/
 // Base "constructor" for jQuery.ajaxPrefilter and jQuery.ajaxTransport
+// 向 prefilters 和 transports 两个 json 对象添加数据
 function addToPrefiltersOrTransports( structure ) {
 
 	// dataTypeExpression is optional and defaults to "*"
 	return function( dataTypeExpression, func ) {
 
+		// 如果 dataTypeExpression 不是字符串，那么，dataTypeExpression 强制改为 "*"
 		if ( typeof dataTypeExpression !== "string" ) {
 			func = dataTypeExpression;
 			dataTypeExpression = "*";
@@ -13209,18 +13239,37 @@ function addToPrefiltersOrTransports( structure ) {
 
 		var dataType,
 			i = 0,
+			/*
+            core_rnotwhite = /\S+/g 匹配任意不是空白的字符
+            
+            eg:
+            "jsonp xml".match(/\S+/g)
+            // ["jsonp", "xml"]
+            */
 			dataTypes = dataTypeExpression.toLowerCase().match( core_rnotwhite ) || [];
 
+		// func 必须是函数
 		if ( jQuery.isFunction( func ) ) {
 			// For each dataType in the dataTypeExpression
 			while ( (dataType = dataTypes[i++]) ) {
 				// Prepend if requested
+				// 第一个字母是 + ，如 "+abc"[0] -> "+"，则丢掉这个 +
 				if ( dataType[0] === "+" ) {
 					dataType = dataType.slice( 1 ) || "*";
+					/*
+					以 structure 为 prefilters 为例：
+					prefilters 原本是空对象 {}
+					
+					① 如果 prefilters[ dataType ] 为 undefined，那么就创建一个空数组
+					   prefilters[ dataType ] = [];
+					② 如果 prefilters[ dataType ] 已经初始化为数组了，就用这个数组
+					③ 往这个数组 prefilters[ dataType ] 头部加入函数 func
+					*/
 					(structure[ dataType ] = structure[ dataType ] || []).unshift( func );
 
 				// Otherwise append
 				} else {
+					// 第一个字母不是 + 的时候，把函数 func 加入数组尾部
 					(structure[ dataType ] = structure[ dataType ] || []).push( func );
 				}
 			}
@@ -13232,24 +13281,56 @@ function addToPrefiltersOrTransports( structure ) {
 function inspectPrefiltersOrTransports( structure, options, originalOptions, jqXHR ) {
 
 	var inspected = {},
+		// structure 为 transports，seekingTransport 为 true
 		seekingTransport = ( structure === transports );
 
 	function inspect( dataType ) {
 		var selected;
 		inspected[ dataType ] = true;
+		// structure[ dataType ] 是一个数组，里面存的是函数
 		jQuery.each( structure[ dataType ] || [], function( _, prefilterOrFactory ) {
+			// 执行函数 prefilterOrFactory
 			var dataTypeOrTransport = prefilterOrFactory( options, originalOptions, jqXHR );
+			// 执行结果 dataTypeOrTransport 是字符串，并且 structure 为 prefilters，并且没有执行过 inspect( dataTypeOrTransport )
 			if( typeof dataTypeOrTransport === "string" && !seekingTransport && !inspected[ dataTypeOrTransport ] ) {
+				// options.dataTypes 数组头部加入 dataTypeOrTransport
 				options.dataTypes.unshift( dataTypeOrTransport );
+				/*
+				这里递归调用，那下面的 false 可以执行到吗？是可以的！
+				
+				eg:
+				function f(num){
+					if (num === 1){
+						f(2);
+						console.log('可以执行 return false');
+						return false;
+					} else if (num === 2){
+						return true;
+					}
+					return;
+				}
+				f(1) -> false 并且打印 可以执行 return false
+				*/
 				inspect( dataTypeOrTransport );
 				return false;
+			// structure 为 transports
 			} else if ( seekingTransport ) {
+				// 返回 prefilterOrFactory( options, originalOptions, jqXHR )
 				return !( selected = dataTypeOrTransport );
 			}
 		});
+		// 如果 structure 为 prefilters，selected 一直是 undefined
 		return selected;
 	}
 
+	/*
+	① && 优先级高于 ||
+	② 优先返回 inspect( options.dataTypes[ 0 ] ) 的结果
+	③ 当 ② 中返回值为假时，如果 inspected[ "*" ] 也是假（说明 options.dataTypes[ 0 ] 不为 "*"），那么返回 inspect( "*" )
+
+	其实，简单点理解就是：
+	优先返回 inspect( options.dataTypes[ 0 ] ) ，如果为假，则返回 inspect( "*" )   
+	*/
 	return inspect( options.dataTypes[ 0 ] ) || !inspected[ "*" ] && inspect( "*" );
 }
 
@@ -13258,21 +13339,51 @@ function inspectPrefiltersOrTransports( structure, options, originalOptions, jqX
 // Fixes #9887
 function ajaxExtend( target, src ) {
 	var key, deep,
+		// flatOptions 里有的属性不需要深度复制，成为 target 下的第一级属性
 		flatOptions = jQuery.ajaxSettings.flatOptions || {};
 
 	for ( key in src ) {
 		if ( src[ key ] !== undefined ) {
+			/*
+			flatOptions[ key ] ? target : ( deep || (deep = {}) ) 
+			① 如果 flatOptions[ key ] 为真，则设置 target[ key ] = src[ key ]
+			② 如果 flatOptions[ key ] 为假，则设置 deep[ key ] = src[ key ]
+
+			这里是浅拷贝
+			*/
 			( flatOptions[ key ] ? target : ( deep || (deep = {}) ) )[ key ] = src[ key ];
 		}
 	}
 	if ( deep ) {
+		/*
+		jQuery.extend 第一个参数为 true 表示深拷贝
+		var o1 = {
+			a : [1,2]
+		};
+
+		var o2 = {
+			b : [3,4]
+		};
+
+		jQuery.extend( true, o1, o2 );
+
+		console.log(o1);
+		-> {
+			a : [1,2],
+			b : [3,4]
+		}
+	
+		*/
 		jQuery.extend( true, target, deep );
 	}
 
 	return target;
 }
 
+// 从服务器加载数据，并使用返回的 html 内容替换当前匹配元素的内容
 jQuery.fn.load = function( url, params, callback ) {
+
+	// _load = jQuery.fn.load 为旧的 load 方法，多个 jQuery 版本共存的情况？
 	if ( typeof url !== "string" && _load ) {
 		return _load.apply( this, arguments );
 	}
@@ -13280,13 +13391,16 @@ jQuery.fn.load = function( url, params, callback ) {
 	var selector, type, response,
 		self = this,
 		off = url.indexOf(" ");
-
+	/*
+	你还可以在URL字符串后面追加指定的选择器(与URL之间用空格隔开)，以便于只使用加载的html文档中匹配选择器的部分内容来替换当前匹配元素的内容。如果该文档没有匹配选择器的内容，就使用空字符串("")来替换当前匹配元素的内容。
+	*/
 	if ( off >= 0 ) {
 		selector = url.slice( off );
 		url = url.slice( 0, off );
 	}
 
 	// If it's a function
+	// 如果第二个实参是函数，那就把它当第三个参数，第二个实参 params 变为 undefined
 	if ( jQuery.isFunction( params ) ) {
 
 		// We assume that it's the callback
@@ -13294,11 +13408,13 @@ jQuery.fn.load = function( url, params, callback ) {
 		params = undefined;
 
 	// Otherwise, build a param string
+	// 默认使用 GET 方式，如果提供了对象形式的数据，则自动转为 POST 方式
 	} else if ( params && typeof params === "object" ) {
 		type = "POST";
 	}
 
 	// If we have elements to modify, make the request
+	// 如果是 $() 这种没有选取到元素的，没必要发出请求，浪费资源！
 	if ( self.length > 0 ) {
 		jQuery.ajax({
 			url: url,
@@ -13307,11 +13423,12 @@ jQuery.fn.load = function( url, params, callback ) {
 			type: type,
 			dataType: "html",
 			data: params
+		// 内容替换
 		}).done(function( responseText ) {
 
 			// Save response for use in complete callback
 			response = arguments;
-
+			// 如果有 selector ，只需要 selector 匹配出来的内容
 			self.html( selector ?
 
 				// If a selector was specified, locate the right elements in a dummy div
@@ -13320,8 +13437,14 @@ jQuery.fn.load = function( url, params, callback ) {
 
 				// Otherwise use the full result
 				responseText );
-
+		// 回调
 		}).complete( callback && function( jqXHR, status ) {
+			/*
+			jQuery.fn.each : function ( callback, args ) {
+				return jQuery.each( this, callback, args );
+			}
+			在 this 的每一个元素上执行 callback.apply( this[ i ], args )
+			*/
 			self.each( callback, response || [ jqXHR.responseText, status, jqXHR ] );
 		});
 	}
@@ -13331,6 +13454,12 @@ jQuery.fn.load = function( url, params, callback ) {
 
 // Attach a bunch of functions for handling common AJAX events
 jQuery.each( [ "ajaxStart", "ajaxStop", "ajaxComplete", "ajaxError", "ajaxSuccess", "ajaxSend" ], function( i, type ){
+	/*
+	eg:
+	jQuery.fn.ajaxStart = function(fn){
+		return this.on( 'ajaxStart', fn );
+	}
+	*/
 	jQuery.fn[ type ] = function( fn ){
 		return this.on( type, fn );
 	};
@@ -13346,8 +13475,16 @@ jQuery.extend({
 	etag: {},
 
 	ajaxSettings: {
+		// 当前页面地址
 		url: ajaxLocation,
 		type: "GET",
+		/*
+		① rlocalProtocol = /^(?:about|app|app-storage|.+-extension|file|res|widget):$/
+		本地协议
+
+		② ajaxLocParts 是这样形式的数组：
+		["http://www.nanchao.win:80", "http:", "www.nanchao.win", "80", index: 0, input: "http://www.nanchao.win:80/tags/js:Search?search=jq&go=Go"]
+		*/
 		isLocal: rlocalProtocol.test( ajaxLocParts[ 1 ] ),
 		global: true,
 		processData: true,
@@ -13406,6 +13543,7 @@ jQuery.extend({
 		// you can add your own custom options here if
 		// and when you create one that shouldn't be
 		// deep extended (see ajaxExtend)
+		// 这里的属性不要深度复制
 		flatOptions: {
 			url: true,
 			context: true
@@ -13415,13 +13553,26 @@ jQuery.extend({
 	// Creates a full fledged settings object into target
 	// with both ajaxSettings and settings fields.
 	// If target is omitted, writes into ajaxSettings.
+	/*
+	作用：设置AJAX的全局默认设置
+	该函数用于更改jQuery中AJAX请求的默认设置选项。之后执行的所有AJAX请求，如果对应的选项参数没有设置，将使用这里的默认设置
+	*/
 	ajaxSetup: function( target, settings ) {
 		return settings ?
+			
+			/*
+			① ajaxExtend( target, jQuery.ajaxSettings )
+			将 jQuery.ajaxSettings 的属性深度复制给 target，返回 target
+			② 然后将 settings 的属性深度复制给 target，这样就可以覆盖 jQuery.ajaxSettings 中的全局配置属性
 
+			以上的深度复制的属性不包括 jQuery.ajaxSettings.flatOptions 中的属性
+			*/
 			// Building a settings object
+			// 返回修改后的 target
 			ajaxExtend( ajaxExtend( target, jQuery.ajaxSettings ), settings ) :
 
 			// Extending ajaxSettings
+			// 返回修改后的 jQuery.ajaxSettings
 			ajaxExtend( jQuery.ajaxSettings, target );
 	},
 
@@ -13429,15 +13580,21 @@ jQuery.extend({
 	ajaxTransport: addToPrefiltersOrTransports( transports ),
 
 	// Main method
+	/*
+	url : 请求地址
+	options ： 请求配置参数，缺省参数则用 jQuery.ajaxSetup() 配置的全局参数
+	*/
 	ajax: function( url, options ) {
 
 		// If url is an object, simulate pre-1.5 signature
+		// $.ajax({}) 形式
 		if ( typeof url === "object" ) {
 			options = url;
 			url = undefined;
 		}
 
 		// Force options to be an object
+		// options 为假时，强制变为对象
 		options = options || {};
 
 		var transport,
@@ -13455,15 +13612,22 @@ jQuery.extend({
 			// Loop variable
 			i,
 			// Create the final options object
+			// 最终的配置对象
 			s = jQuery.ajaxSetup( {}, options ),
 			// Callbacks context
 			callbackContext = s.context || s,
 			// Context for global events is callbackContext if it is a DOM node or jQuery collection
+			/*
+			① 如果 callbackContext 是 dom 元素或者 jQuery 对象，则全局事件的上下文是 jQuery( callbackContext )
+			② 否则，全局事件的上下文是 jQuery.event
+			*/
 			globalEventContext = s.context && ( callbackContext.nodeType || callbackContext.jquery ) ?
 				jQuery( callbackContext ) :
 				jQuery.event,
 			// Deferreds
+			// 新建一个延迟对象
 			deferred = jQuery.Deferred(),
+			// 新建一个回调队列
 			completeDeferred = jQuery.Callbacks("once memory"),
 			// Status-dependent callbacks
 			statusCode = s.statusCode || {},
@@ -13479,21 +13643,40 @@ jQuery.extend({
 				readyState: 0,
 
 				// Builds headers hashtable if needed
+				/*
+				① 如果不存在 responseHeaders 哈希表，创建之
+				② 从哈希表里取出“键”对应的“值”
+				*/
 				getResponseHeader: function( key ) {
 					var match;
 					if ( state === 2 ) {
 						if ( !responseHeaders ) {
+							// 初始化为 json 对象
 							responseHeaders = {};
+							/*
+							① rheaders = /^(.*?):[ \t]*([^\r\n]*)$/mg 匹配 key:value 这种形式
+							eg:
+							rheaders.exec('Last-Modified:Mon, 07 Aug 2017 06:13:06 GMT');
+							-> ["Last-Modified:Mon, 07 Aug 2017 06:13:06 GMT", "Last-Modified", "Mon, 07 Aug 2017 06:13:06 GMT", index: 0, input: "Last-Modified:Mon, 07 Aug 2017 06:13:06 GMT"]
+							
+							② 循环取出每一个键值对
+							*/
 							while ( (match = rheaders.exec( responseHeadersString )) ) {
+								// responseHeaders["Last-Modified"] = "Mon, 07 Aug 2017 06:13:06 GMT"
 								responseHeaders[ match[1].toLowerCase() ] = match[ 2 ];
 							}
 						}
 						match = responseHeaders[ key.toLowerCase() ];
 					}
+					/*
+					① 如果 match 为 undefined 或 null ，则返回 null
+					② match 为其他值，返回 match
+					*/
 					return match == null ? null : match;
 				},
 
 				// Raw string
+				// 如果请求完成，返回纯字符串
 				getAllResponseHeaders: function() {
 					return state === 2 ? responseHeadersString : null;
 				},
@@ -13502,7 +13685,22 @@ jQuery.extend({
 				setRequestHeader: function( name, value ) {
 					var lname = name.toLowerCase();
 					if ( !state ) {
+						/*
+						① 如果 requestHeadersNames[ lname ] 不存在，则requestHeadersNames[ lname ] = name
+						② 如果 requestHeadersNames[ lname ] 存在，则取出来用
+						③ 不管 ① 还是 ②，都有：requestHeaders[ requestHeadersNames[ lname ] ] = value;
+
+						那么，requestHeadersNames 就是这个一个 json对象：
+						{
+							name1.toLowerCase() : name1,
+							name2.toLowerCase() : name2,
+							name2.toLowerCase() : name2,
+							...
+						}
+						*/
+						// 给 requestHeadersNames json 对象加键值对
 						name = requestHeadersNames[ lname ] = requestHeadersNames[ lname ] || name;
+						// 给 requestHeaders json 对象加键值对
 						requestHeaders[ name ] = value;
 					}
 					return this;
@@ -14243,6 +14441,9 @@ jQuery.ajaxTransport(function( options ) {
 		};
 	}
 });
+
+
+
 var fxNow, timerId,
 	rfxtypes = /^(?:toggle|show|hide)$/,
 	rfxnum = new RegExp( "^(?:([+-])=|)(" + core_pnum + ")([a-z%]*)$", "i" ),
