@@ -14693,7 +14693,17 @@ jQuery.ajaxTransport(function( options ) {
 		return {
 			send: function( headers, complete ) {
 				var i, id,
+                    // new XMLHttpRequest()
 					xhr = options.xhr();
+                /*
+                open(
+                   string method,           // 表示HTTP动词，比如“GET”、“POST”、“PUT”和“DELETE”
+                   string url,              // 表示请求发送的网址
+                   optional boolean async,  // 表示请求是否为异步
+                   optional string user,    // 表示用于认证的用户名，默认为空字符串
+                   optional string password // 表示用于认证的密码，默认为空字符串
+                )
+                 */
 				xhr.open( options.type, options.url, options.async, options.username, options.password );
 				// Apply custom fields if provided
 				if ( options.xhrFields ) {
@@ -14703,6 +14713,7 @@ jQuery.ajaxTransport(function( options ) {
 				}
 				// Override mime type if needed
 				if ( options.mimeType && xhr.overrideMimeType ) {
+                    // 原生的 xhr.overrideMimeType 方法用来指定服务器返回数据的MIME类型
 					xhr.overrideMimeType( options.mimeType );
 				}
 				// X-Requested-With header
@@ -14716,9 +14727,15 @@ jQuery.ajaxTransport(function( options ) {
 				// Set headers
 				// 请求头
 				for ( i in headers ) {
+                    // 原生的 xhr.setRequestHeader 方法用于设置HTTP头信息。该方法必须在open()之后、send()之前调用
 					xhr.setRequestHeader( i, headers[ i ] );
 				}
 				// Callback
+                /*
+                ① 不传参数，即 type 为 undefined，为表示‘成功’
+                ② type 为 "error"，为表示‘失败’
+                ③ type 为 "abort"，为表示‘终止’
+                 */
 				callback = function( type ) {
 					return function() {
 						if ( callback ) {
@@ -14734,6 +14751,13 @@ jQuery.ajaxTransport(function( options ) {
 								);
 							} else {
 								complete(
+                                    /*
+                                    xhrSuccessStatus = {
+                                        0: 200,
+                                        1223: 204
+                                    }
+                                    如果状态码是 0 或 1223，则修正，否则直接用该状态码
+                                     */
 									xhrSuccessStatus[ xhr.status ] || xhr.status,
 									xhr.statusText,
 									// Support: IE9
@@ -14742,6 +14766,7 @@ jQuery.ajaxTransport(function( options ) {
 									typeof xhr.responseText === "string" ? {
 										text: xhr.responseText
 									} : undefined,
+                                    // 原生的 getAllResponseHeaders 方法返回服务器发来的所有HTTP头信息，格式为字符串
 									xhr.getAllResponseHeaders()
 								);
 							}
@@ -14749,6 +14774,7 @@ jQuery.ajaxTransport(function( options ) {
 					};
 				};
 				// Listen to events
+                // 这里的 callback()、callback("error")、callback("abort") 返回值都是函数
 				xhr.onload = callback();
 				xhr.onerror = callback("error");
 				// Create the abort callback
@@ -14756,9 +14782,15 @@ jQuery.ajaxTransport(function( options ) {
 				// Do send the request
 				// This may raise an exception which is actually
 				// handled in jQuery.ajax (so no try/catch here)
+                /*
+                send方法用于实际发出HTTP请求。
+                ① 如果不带参数，就表示HTTP请求只包含头信息；
+                ② 如果带有参数，就表示除了头信息，还带有包含具体数据的信息体。
+                 */ 
 				xhr.send( options.hasContent && options.data || null );
 			},
 			abort: function() {
+                // 这里的 callback 就是上面的 callback("abort")，这是一个函数
 				if ( callback ) {
 					callback();
 				}
