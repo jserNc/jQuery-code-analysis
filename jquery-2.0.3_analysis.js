@@ -301,7 +301,99 @@
     这样，就释放了 jQuery 对全局的 jQuery 和 $ 变量的使用权。
     全局的 $ 还是 123，全局的 jQuery 还是 456，jq 就是 jQuery 内部的 jQuery 方法了。
 
-(8) hooks 钩子机制
+(8) 兼容性问题处理
+
+    我们自己写原生代码的时候，会遇到很多浏览器兼容问题，而用 jQuery 库后就不需要再去关注与浏览器兼容问题了，
+    这是因为 jQuery 库已经把这些兼容性问题处理好了。
+
+    处理兼容问题，在 jQuery 内部主要分为 2 步：
+
+    ① 兼容性问题检测，得到一个功能支持性列表
+
+    jQuery.support = (function( support ) {
+        // 功能检测代码
+        return support;
+    })( {} );
+
+    在 chrome 下执行以上立即执行函数，得到：
+
+    jQuery.support = {
+        checkOn : true
+        optSelected : true
+        reliableMarginRight : true
+        boxSizingReliable : true
+        pixelPosition : true
+        noCloneChecked : true
+        optDisabled : true
+        radioValue : true
+        checkClone : true
+        focusinBubbles : false
+        clearCloneStyle : true
+        cors : true
+        ajax : true
+        boxSizing : true
+    };
+
+    ② 利用钩子（hooks）机制，解决兼容问题
+
+    也就是说 jQuery.support 只是进行功能检测，真正的兼容问题处理是靠一系列 hooks 方法完成的。
+
+    以 attrHooks 解决属性操作兼容性问题为例，attrHooks 对象会有多个属性，代表那几个属性有兼容性问题。
+    如果这个属性有 get 子属性说明获取该属性时兼容性问题，如果这个属性有 set 子属性说明设置该属性有设置兼容性问题。
+    attrHooks 中没有的属性说明是正常的，用常规途径获取或者设置该属性就好了。
+
+    attrHooks: {
+        type: {
+            set: function( elem, value ) {
+                // 注意这里的 !jQuery.support.radioValue
+                if ( !jQuery.support.radioValue && value === "radio" && jQuery.nodeName(elem, "input") ) {
+                    ...
+                }
+            }
+        }
+        ...
+    }
+
+    这里 type 属性和 set 子属性，说明 type 属性的设置（set）需要兼容。
+    很明显看到，如果 jQuery.support.radioValue 为 true，是不会真正执行以上 attrHooks.type.set 方法的。
+
+    以上的 attrHooks 只是钩子的一种，以上 jQuery.support 中的兼容问题都是分散在众多类似于 attrHooks 的钩子中完成的。
+
+    也许上面的叙述没能很好的说明钩子的用法，那就举个简单例子：
+
+    例如，假如学生获得了某比赛第一名，考生加 50 分，获得了第二名，高考加 30 分，获得了第三名，高考加 10 分。
+    那么，统计学生高考总分时，不同的奖项加分就可以用钩子机制来实现。
+    
+    var reward = {
+        firstPlace : 50,   
+        secondPlace : 30,
+        thirdPlace : 10
+    }
+ 
+    function student(name, score, rewardPlace) {
+        return {
+            name: name,
+            score: score,
+            rewardPlace: rewardPlace
+        };
+    }
+
+    function totalScore(studentInfo) {
+        var result = studentInfo.score;
+        if (reward[studentInfo.rewardPlace] ) {
+            result += reward[studentInfo.rewardPlace] ;
+        }
+        return result;
+    }
+
+    var info = student('nanc', 100, 'firstPlace')
+
+    console.log(totalScore(info))
+    -> 150
+  
+ 
+    使用钩子去处理特殊情况，可以让代码的逻辑更加清晰，省去大量的条件判断，上面的钩子机制的实现方式，采用的就是表驱动方式，
+    就是我们事先预定好一张表（俗称打表），用这张表去适配特殊情况。
  */
 
 (function( window, undefined ) {
