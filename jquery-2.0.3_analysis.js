@@ -6788,7 +6788,7 @@ function bbb(){
 $.queue(document, 'q1', aaa);
 $.queue(document, 'q1', bbb);
 
-在 document 元素上建立名为 q1 的队列，然后把 aaa,bbb 方法分别加入到队列里
+在 document 元素上建立名为 q1 的队列，然后把 aaa、bbb 方法分别加入到队列里
 
 queue 方法只有2个参数，表示读取队列：
 
@@ -6851,14 +6851,17 @@ $('#div1').ckick(function(){
  */
 
 jQuery.extend({
-    // 入队，相当于数组的 push 方法
     /*
+	queue 入队，相当于数组的 push 方法
+
     这个方法既是 setter 又是 getter
     第一个参数是 dom 元素；
     第二个参数是队列名称；
-    第三个参数是 function 或 数组
+    第三个参数是 function 或 function 组成的数组
 
     若是三个参数，就是入队；若是两个参数，就是获取队列
+
+	注意，若第三个参数是数组，就会重置整个队列
     */
 	queue: function( elem, type, data ) {
 		var queue;
@@ -6872,7 +6875,7 @@ jQuery.extend({
 			if ( data ) {
 				if ( !queue || jQuery.isArray( data ) ) {
                     /*
-                    一般情况下，第一次取不到队列属性（即 !queue 为 true）,会初始化一个队列 queue
+                    一般情况下，第一次取不到队列属性（即 queue 为 undefined）,会初始化一个队列 queue
                     
                     可是，为什么 data 是数组也走这里初始化队列呢？
 
@@ -6883,6 +6886,8 @@ jQuery.extend({
                     // [bbb]
 
                     这说明，如果第三个参数是数组时，不管队列在前面存了什么，都重新初始化
+
+					另外，jQuery.makeArray(data) 确保了 queue 一定是个数组，所以下面可以用 push 方法
                      */
 					queue = data_priv.access( elem, type, jQuery.makeArray(data) );
 				} else {
@@ -6901,17 +6906,20 @@ jQuery.extend({
 			return queue || [];
 		}
 	},
-    // 出队，相当于数组的 shift 方法
-    // 上边的例子中，我们出队时都是调用 dequeue 方法，每次需要出队，就主动调用一次 dequeue
-    // 也就是说，上边出队多少次，我们就调用了多少次 dequeue 方法
-    // 如果我们想要调用一次 dequeue，然后执行多次出队操作，就得靠下面的 next 方法
-    // 也就是说，第一个方法调用时，主动调用一次 next 方法，就可以触发下一次出队了
-    // 如果每个方法调用时，都主动触发 next 方法，那就把整个队列串起来了，整个队列执行一次 dequeue 就可以出队所有
+	/*
+	dequeue 出队，相当于数组的 shift 方法
+    上边的例子中，我们出队时都是调用 dequeue 方法，每次需要出队，就主动调用一次 dequeue
+    也就是说，上边出队多少次，我们就调用了多少次 dequeue 方法
+     
+	如果我们想要调用一次 dequeue，然后执行多次出队操作，就得靠下面的 next 方法
+    也就是说，第一个方法调用时，主动调用一次 next 方法，就可以触发下一次出队了
+    如果每个方法调用时，都主动触发 next 方法，那就把整个队列串起来了，整个队列执行一次 dequeue 就可以出队所有
+	*/
 	dequeue: function( elem, type ) {
 		type = type || "fx";
-
+			
+			// queue 只有 2 个参数，返回队列 queue
 		var queue = jQuery.queue( elem, type ),
-            // queue 只有 2 个参数，返回队列 queue
 			startLength = queue.length,
             // 队头的函数
 			fn = queue.shift(),
@@ -6941,7 +6949,7 @@ jQuery.extend({
             /*
             例：
             var body = $('body');
-            function cb1(next,hoost) {
+            function cb1(next,hooks) {
                 console.log(11111)
                 next()  
             }
@@ -6959,9 +6967,9 @@ jQuery.extend({
             */
 		}
 
+		// 所有的元素都出队了，清理缓存数据
 		if ( !startLength && hooks ) {
 			hooks.empty.fire();
-            // 清理缓存数据
 		}
 	},
 
@@ -6969,6 +6977,10 @@ jQuery.extend({
     // 出队结束后，清除队列缓存数据
 	_queueHooks: function( elem, type ) {
 		var key = type + "queueHooks";
+		/*
+		① 第一次执行这个 _queueHooks 方法，data_priv.get( elem, key ) 为 undefined，所以用 data_priv.access() 初始化；
+		② 以后再执行这个 _queueHooks 方法，data_priv.get( elem, key ) 就可以取出值了。
+		*/
 		return data_priv.get( elem, key ) || data_priv.access( elem, key, {
 			empty: jQuery.Callbacks("once memory").add(function() {
 				data_priv.remove( elem, [ type + "queue", key ] );
@@ -6982,37 +6994,43 @@ jQuery.extend({
 				data_priv.remove( elem, [ type + "queue", key ] );
 		  }
           empty 是一个回调对象，并且添加了一个回调函数
-          回调对象 fire 的时候把 type + "queue"、type + "queueHooks" 两个属性都删掉
+          回调对象 fire() 的时候把 type + "queue"、type + "queueHooks" 两个属性都删掉
         */
 	}
 });
 
+
 jQuery.fn.extend({
+	/*
+	① 如果队列名 type 不为 fx，只是入队
+	② 如果队列名 type 为 fx，并且对头不是 "inprogress"，那么入队后马上出队
+	*/
 	queue: function( type, data ) {
 		var setter = 2;
 
+		// $('div').queue(funtion(){}) 这种一个参数形式
 		if ( typeof type !== "string" ) {
 			data = type;
 			type = "fx";
 			setter--;
 		}
 
+		// 获取 this 的第一个元素对应的队列
 		if ( arguments.length < setter ) {
-            // 获取的时候，jQuery 的通常做法是获取第一项对应的值
 			return jQuery.queue( this[0], type );
 		}
 
 		return data === undefined ?
 			this :
-            // 获取的时候，jQuery 的通常做法是队每一项分别进行设置
+            // 入队
 			this.each(function() {
 				var queue = jQuery.queue( this, type, data );
 
 				// ensure a hooks for this queue
+				// 每一个单独的元素都给一个钩子，将来清理缓存数据用
 				jQuery._queueHooks( this, type );
 
                 /*
-                
                 $(this).animate({width:300},2000);
                 $(this).animate({height:300},2000);
                 $(this).animate({left:300},2000);
@@ -7024,7 +7042,7 @@ jQuery.fn.extend({
 
                 也就是下面的，队列名为 fx，并且队头元素不是 inprogress，就出队
 
-                然后每个 animate 方法触发 next 方法，就可以使得所有动画连续起来
+                另外，每个 animate 方法还触发 next 方法，就可以使得所有动画连续起来
                  */
 
 				if ( type === "fx" && queue[0] !== "inprogress" ) {
@@ -7053,21 +7071,21 @@ jQuery.fn.extend({
     });
 
     点击 ID 为 div1 的元素后，其宽度先花 2 秒变成 300px，停顿 2 秒，然后再花 2 秒向右移动 300px
-
-
-    jQuery.fx.speeds = {
-        slow : 600,
-        fast : 200,
-        _default : 400
-    };
-
-    delay(slow) 是指把 fx 队列延迟 600 毫秒
      */
 	delay: function( time, type ) {
+		/*
+		jQuery.fx.speeds = {
+			slow : 600,
+			fast : 200,
+			_default : 400
+		};
+
+		time 为 'slow'，相当于延迟 600 毫秒 
+		*/
 		time = jQuery.fx ? jQuery.fx.speeds[ time ] || time : time;
 		type = type || "fx";
 
-        // 返回之前，入队一个方法，时间 time 后出队下一个方法
+        // 延迟 time 执行下一个出队
 		return this.queue( type, function( next, hooks ) {
 			var timeout = setTimeout( next, time );
 			hooks.stop = function() {
@@ -7076,7 +7094,10 @@ jQuery.fn.extend({
             // 后面的 animate 方法中会调用 hooks.stop 方法
 		});
 	},
-    // 清空队列，即把队列变成空数组
+    /*
+	前面说到，只要参数 jQuery.queue ( elem, type, data ) 第三个参数为数组，就会重置这个队列
+	清空队列，即把队列变成空数组
+	*/
 	clearQueue: function( type ) {
 		return this.queue( type || "fx", [] );
 	},
@@ -7105,7 +7126,8 @@ jQuery.fn.extend({
 					defer.resolveWith( elements, [ elements ] );
 				}
 			};
-
+		
+		// 例如 $('div').promise(obj)
 		if ( typeof type !== "string" ) {
 			obj = type;
 			type = undefined;
@@ -7131,6 +7153,7 @@ jQuery.fn.extend({
 			}
 		}
 		resolve();
+		// 返回一个 promise 对象
 		return defer.promise( obj );
 	}
 });
@@ -15243,7 +15266,12 @@ var fxNow, timerId,
 	};
 
 // Animations created synchronously will run synchronously
+// 返回当前时间戳
 function createFxNow() {
+	/*
+	① 省略 setTimeout 的第二个参数，则该参数默认为 0
+	② 将 fxNow 值变为当前时间戳并返回后，尽可能快地将 fxNow 置为 undefined
+	*/
 	setTimeout(function() {
 		fxNow = undefined;
 	});
@@ -15277,6 +15305,12 @@ function Animation( elem, properties, options ) {
 			if ( stopped ) {
 				return false;
 			}
+			/*
+			这里优化了 setInterval(func, 13)
+			由于js单线程机制不能保证每13ms会执行一次。
+			通过createTime()与当前时间对比，动态算出变化尺度。
+			通过这种方式也许原本期望tick执行10次，但浏览器在你延时时间内（比方说2000ms）时间内只给你调用了9次的情况下也能完整完成一个动画。
+			*/
 			var currentTime = fxNow || createFxNow(),
 				remaining = Math.max( 0, animation.startTime + animation.duration - currentTime ),
 				// archaic crash bug won't allow us to use 1 - ( 0.5 || 0 ) (#12497)
@@ -15848,15 +15882,27 @@ jQuery.speed = function( speed, easing, fn ) {
 	return opt;
 };
 
+// 默认提供两种运动方式可选
 jQuery.easing = {
+	// 线性
 	linear: function( p ) {
 		return p;
 	},
+	// 摇摆缓动
 	swing: function( p ) {
+		// y = 0.5 - 0.5 * (π * x)
 		return 0.5 - Math.cos( p*Math.PI ) / 2;
 	}
 };
 
+/*
+整个动画机制只使用一个统一的 setInterval ，把 tick 推入堆栈 jQuery.timers ，
+每次定时器调用 jQuery.fx.tick() 遍历堆栈里的函数，
+通过 tick 的返回值知道是否运动完毕，完毕的栈出，没有动画的时候就 jQuery.fx.stop() 暂停。
+jQuery.fx.start() 开启定时器前会检测是开启状态，防止重复开启。
+每次把tick推入堆栈的时候都会调用 jQuery.fx.start() 。
+这样就做到了需要时自动开启，不需要时自动关闭。
+*/
 jQuery.timers = [];
 jQuery.fx = Tween.prototype.init;
 jQuery.fx.tick = function() {
@@ -15952,6 +15998,10 @@ jQuery.fn.offset = function( options ) {
 		left: box.left + win.pageXOffset - docElem.clientLeft
 	};
 };
+
+
+
+
 
 jQuery.offset = {
 
