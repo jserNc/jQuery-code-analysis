@@ -15216,9 +15216,19 @@ var fxNow, timerId,
 	animationPrefilters = [ defaultPrefilter ],
 	tweeners = {
 		"*": [function( prop, value ) {
+			// 实际调用时，这里的 this 是指 animation
 			var tween = this.createTween( prop, value ),
+				// 当前值
 				target = tween.cur(),
+				/*
+				rfxnum.exec('+=20px')
+				-> ["+=20px", "+", "20", "px", index: 0, input: "+=20px"]
+
+				rfxnum.exec('20px')
+				-> ["20px", undefined, "20", "px", index: 0, input: "20px"]
+				*/
 				parts = rfxnum.exec( value ),
+				// 单位
 				unit = parts && parts[ 3 ] || ( jQuery.cssNumber[ prop ] ? "" : "px" ),
 
 				// Starting value computation is required for potential unit mismatches
@@ -15341,6 +15351,7 @@ function Animation( elem, properties, options ) {
 			startTime: fxNow || createFxNow(),
 			duration: options.duration,
 			tweens: [],
+			// 创建单个属性运动对象
 			createTween: function( prop, end ) {
 				var tween = jQuery.Tween( elem, animation.opts, prop, end,
 						animation.opts.specialEasing[ prop ] || animation.opts.easing );
@@ -15388,6 +15399,7 @@ function Animation( elem, properties, options ) {
 	}
 
 	jQuery.fx.timer(
+		// tick 是一个函数，这里给它添加 3 个属性，然后返回 tick 函数
 		jQuery.extend( tick, {
 			elem: elem,
 			anim: animation,
@@ -15469,12 +15481,15 @@ jQuery.Animation = jQuery.extend( Animation, {
 	}
 });
 
+// 默认过滤方法
 function defaultPrefilter( elem, props, opts ) {
 	/* jshint validthis: true */
 	var prop, value, toggle, tween, hooks, oldfire,
+		// 实际调用时，this 会指向 animation
 		anim = this,
 		orig = {},
 		style = elem.style,
+		// element 元素是否可见
 		hidden = elem.nodeType && isHidden( elem ),
 		dataShow = data_priv.get( elem, "fxshow" );
 
@@ -15516,7 +15531,7 @@ function defaultPrefilter( elem, props, opts ) {
 		// animations on inline elements that are having width/height animated
 		if ( jQuery.css( elem, "display" ) === "inline" &&
 				jQuery.css( elem, "float" ) === "none" ) {
-
+			// 强制改为 inline-block
 			style.display = "inline-block";
 		}
 	}
@@ -15534,6 +15549,7 @@ function defaultPrefilter( elem, props, opts ) {
 	// show/hide pass
 	for ( prop in props ) {
 		value = props[ prop ];
+		// rfxtypes = /^(?:toggle|show|hide)$/
 		if ( rfxtypes.exec( value ) ) {
 			delete props[ prop ];
 			toggle = toggle || value === "toggle";
@@ -15592,6 +15608,11 @@ function defaultPrefilter( elem, props, opts ) {
 	}
 }
 
+/*
+作用：生成单个属性的运动对象
+
+Tween 和 Tween.prototype.init 的关系类似于 jQuery 和 jQuery.prototype.init 的关系
+*/
 function Tween( elem, options, prop, end, easing ) {
 	return new Tween.prototype.init( elem, options, prop, end, easing );
 }
@@ -15602,32 +15623,49 @@ Tween.prototype = {
 	init: function( elem, options, prop, end, easing, unit ) {
 		this.elem = elem;
 		this.prop = prop;
+		// 默认的缓动算法是 swing
 		this.easing = easing || "swing";
 		this.options = options;
+		// 初始值
 		this.start = this.now = this.cur();
+		// 最终值
 		this.end = end;
+		// 单位
 		this.unit = unit || ( jQuery.cssNumber[ prop ] ? "" : "px" );
 	},
+	// 获取当前值
 	cur: function() {
 		var hooks = Tween.propHooks[ this.prop ];
-
+		// 如果当前属性有自己的钩子方法，就用之，否则用默认的钩子方法
 		return hooks && hooks.get ?
 			hooks.get( this ) :
 			Tween.propHooks._default.get( this );
 	},
+	// 运动到 percent 对应的值
 	run: function( percent ) {
 		var eased,
 			hooks = Tween.propHooks[ this.prop ];
 
 		if ( this.options.duration ) {
+			/*
+			jQuery.easing = {
+				linear: function( p ) {},
+				swing: function( p ) {}
+			};
+
+			如只有 linear、swing 两种函数一个实参就够了，但是这里的运动函数是可用用插件扩展的，传多个参数方便扩展方法使用
+			*/
 			this.pos = eased = jQuery.easing[ this.easing ](
 				percent, this.options.duration * percent, 0, 1, this.options.duration
 			);
 		} else {
 			this.pos = eased = percent;
 		}
+
+		// 一小步目标值
 		this.now = ( this.end - this.start ) * eased + this.start;
 
+		// 移动一小步
 		if ( this.options.step ) {
 			this.options.step.call( this.elem, this.now, this );
 		}
@@ -15641,13 +15679,16 @@ Tween.prototype = {
 	}
 };
 
+// Tween 和 Tween.prototype.init 构造函数共用原型
 Tween.prototype.init.prototype = Tween.prototype;
 
+// 钩子，处理差异性
 Tween.propHooks = {
 	_default: {
 		get: function( tween ) {
 			var result;
 
+			// ① 直接读元素属性值
 			if ( tween.elem[ tween.prop ] != null &&
 				(!tween.elem.style || tween.elem.style[ tween.prop ] == null) ) {
 				return tween.elem[ tween.prop ];
@@ -15657,6 +15698,7 @@ Tween.propHooks = {
 			// attempt a parseFloat and fallback to a string if the parse fails
 			// so, simple values such as "10px" are parsed to Float.
 			// complex values such as "rotate(1rad)" are returned as is.
+			// ② 用 css 方法取属性值
 			result = jQuery.css( tween.elem, tween.prop, "" );
 			// Empty strings, null, undefined and "auto" are converted to 0.
 			return !result || result === "auto" ? 0 : result;
@@ -15706,6 +15748,7 @@ jQuery.fn.extend({
 	},
 	animate: function( prop, speed, easing, callback ) {
 		var empty = jQuery.isEmptyObject( prop ),
+			// 修正后的持续时间、缓动方法、回调函数等组成的配置对象
 			optall = jQuery.speed( speed, easing, callback ),
 			doAnimation = function() {
 				// Operate on a copy of prop so per-property easing won't be lost
@@ -15722,6 +15765,11 @@ jQuery.fn.extend({
 			this.each( doAnimation ) :
 			this.queue( optall.queue, doAnimation );
 	},
+	/*
+	type 表示队列名称
+	clearQueue 表示是否清空未执行完的动画队列
+	gotoEnd 表示是否将正在执行的动画跳到结束位置
+	*/
 	stop: function( type, clearQueue, gotoEnd ) {
 		var stopQueue = function( hooks ) {
 			var stop = hooks.stop;
@@ -15729,12 +15777,16 @@ jQuery.fn.extend({
 			stop( gotoEnd );
 		};
 
+		// 修正参数对应关系
 		if ( typeof type !== "string" ) {
 			gotoEnd = clearQueue;
 			clearQueue = type;
 			type = undefined;
 		}
+
+		// 清空队列
 		if ( clearQueue && type !== false ) {
+			// 参数为空数组表示清空队列，而不是简单的入队
 			this.queue( type || "fx", [] );
 		}
 
@@ -15750,12 +15802,14 @@ jQuery.fn.extend({
 				}
 			} else {
 				for ( index in data ) {
+					// rrun = /queueHooks$/
 					if ( data[ index ] && data[ index ].stop && rrun.test( index ) ) {
 						stopQueue( data[ index ] );
 					}
 				}
 			}
 
+			// index 为 0 时停止循环
 			for ( index = timers.length; index--; ) {
 				if ( timers[ index ].elem === this && (type == null || timers[ index ].queue === type) ) {
 					timers[ index ].anim.stop( gotoEnd );
@@ -15767,6 +15821,7 @@ jQuery.fn.extend({
 			// start the next in the queue if the last step wasn't forced
 			// timers currently will call their complete callbacks, which will dequeue
 			// but only if they were gotoEnd
+			// 虽然当前 animate 停止了，但是会继续下一个 animate
 			if ( dequeue || !gotoEnd ) {
 				jQuery.dequeue( this, type );
 			}
@@ -15785,12 +15840,15 @@ jQuery.fn.extend({
 				length = queue ? queue.length : 0;
 
 			// enable finishing flag on private data
+			// 记住结束状态
 			data.finish = true;
 
 			// empty the queue first
+			// 清空队列
 			jQuery.queue( this, type, [] );
 
 			if ( hooks && hooks.stop ) {
+				// 停止，直接到结束位置
 				hooks.stop.call( this, true );
 			}
 
@@ -15850,35 +15908,58 @@ jQuery.each({
 	};
 });
 
+// 返回修正后的持续时间、缓动方法、回调函数等组成的配置对象
 jQuery.speed = function( speed, easing, fn ) {
+	/*
+	① speed 是一个对象，opt 为包含这个对象的所有属性的新 json 对象
+	② speed 不是对象，则 opt 为包含 complete、duration、easing 等三个属性的 json 对象
+	*/
 	var opt = speed && typeof speed === "object" ? jQuery.extend( {}, speed ) : {
+		// complete 首先取 fn 的值，如果是假，再去取 easing 的值，如果还是假，取 speed 的值
 		complete: fn || !fn && easing ||
 			jQuery.isFunction( speed ) && speed,
 		duration: speed,
+		// easing，在 fn 为真时取 easing 值；否则 easing 为真且不为函数时，也取 easing 值
 		easing: fn && easing || easing && !jQuery.isFunction( easing ) && easing
 	};
 
+	/*
+	修正持续时间遵循以下规则：
+	① 若 jQuery.fx.off 为真，也就是全局设定关闭动画，那么持续时间强制为 0；
+	② 若 jQuery.fx.off 为假，可以动画
+	   a. 若设置的持续时间是数字，那就用这个数字；
+	   b. 若设置的持续时间不是数字，那么就去 jQuery.fx.speeds 中去匹配，
+	      'slow' 对应 600 毫秒，'fast' 对应 200 毫秒，其他所有都是默认的 400 毫秒。
+	*/
 	opt.duration = jQuery.fx.off ? 0 : typeof opt.duration === "number" ? opt.duration :
 		opt.duration in jQuery.fx.speeds ? jQuery.fx.speeds[ opt.duration ] : jQuery.fx.speeds._default;
 
 	// normalize opt.queue - true/undefined/null -> "fx"
+	// 若  opt.queue 为 false，表示不使用 queue 队列机制
 	if ( opt.queue == null || opt.queue === true ) {
+		// 默认队列是 fx
 		opt.queue = "fx";
 	}
 
 	// Queueing
 	opt.old = opt.complete;
 
+	// 修正 opt.complete
 	opt.complete = function() {
 		if ( jQuery.isFunction( opt.old ) ) {
 			opt.old.call( this );
 		}
-
+		
+		/*
+		每个元素的 fx 队列都是不同的，因此不同元素或不同队列之间的动画是同步的，相同元素且相同队列之间的动画是异步的。
+		添加到 fx 队列的函数若是队列中当前的第一个函数，将被直接触发，而添加到其他队列中的函数需要手动调用 jQuery.dequeue 才会启动执行。
+		*/
 		if ( opt.queue ) {
 			jQuery.dequeue( this, opt.queue );
 		}
 	};
 
+	// 返回修正后的持续时间、缓动方法、回调函数等组成的配置对象
 	return opt;
 };
 
@@ -15905,46 +15986,64 @@ jQuery.fx.start() 开启定时器前会检测是开启状态，防止重复开启。
 */
 jQuery.timers = [];
 jQuery.fx = Tween.prototype.init;
+
+// 动画帧，遍历执行 jQuery.timers 数组里的方法
 jQuery.fx.tick = function() {
 	var timer,
 		timers = jQuery.timers,
 		i = 0;
 
+	// 当前时间戳
 	fxNow = jQuery.now();
 
 	for ( ; i < timers.length; i++ ) {
 		timer = timers[ i ];
 		// Checks the timer has not already been removed
+		/*
+		① timer() 返回值为假表示执行完毕，所以从数组中移除
+		② 之所以验证 timers[ i ] === timer 是因为 timer() 执行过程中可能会修改 jQuery.timers 数组
+		*/
 		if ( !timer() && timers[ i ] === timer ) {
+			/*
+			① i-- 表示删除的是当前的 timer
+			② i-- 使得下次执行 for 循环时，i 值不变，以免跳过下一个 timer
+			③ 由于数组长度动态变化，所以 for 循环开始并没有缓存 jQuery.timers 的长度
+			*/
 			timers.splice( i--, 1 );
 		}
 	}
-
+	
+	// timers 为空数组时，停止动画
 	if ( !timers.length ) {
 		jQuery.fx.stop();
 	}
 	fxNow = undefined;
 };
 
+// 将函数加入 jQuery.timers 数组
 jQuery.fx.timer = function( timer ) {
 	if ( timer() && jQuery.timers.push( timer ) ) {
 		jQuery.fx.start();
 	}
 };
 
+// 每帧动画时间间隔
 jQuery.fx.interval = 13;
 
+// 开始动画
 jQuery.fx.start = function() {
 	if ( !timerId ) {
 		timerId = setInterval( jQuery.fx.tick, jQuery.fx.interval );
 	}
 };
 
+// 停止动画
 jQuery.fx.stop = function() {
 	clearInterval( timerId );
 	timerId = null;
 };
 
+// 动画时长
 jQuery.fx.speeds = {
 	slow: 600,
 	fast: 200,
@@ -15962,6 +16061,12 @@ if ( jQuery.expr && jQuery.expr.filters ) {
 		}).length;
 	};
 }
+
+
+
+
+
+
 jQuery.fn.offset = function( options ) {
 	if ( arguments.length ) {
 		return options === undefined ?
@@ -15998,9 +16103,6 @@ jQuery.fn.offset = function( options ) {
 		left: box.left + win.pageXOffset - docElem.clientLeft
 	};
 };
-
-
-
 
 
 jQuery.offset = {
