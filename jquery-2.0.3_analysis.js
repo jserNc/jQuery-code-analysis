@@ -82,7 +82,6 @@
        b. 假如像上面那样将 undefined 作为形参，而不传入实参。在 js 中被省略的参数值为 undefined（货真价实的 undefined），
           匿名函数执行时，实参 undefined 会复制给形参 undefined，所以，函数内部的 undefined 就会优先查找这个实参 undefined，而不是全局的可能被修改的 undefined。
 
-
 (2) 伪构造函数 jQuery
 
     既然上边说到匿名函数内部的变量都是局部的，对外都是不可见的，那么我们这么能用 jQuery，$ 这样的方法呢？
@@ -15301,13 +15300,24 @@ function createTween( value, prop, animation ) {
 		}
 	}
 }
+/*
+Animation 一经调用，内部的 tick 函数将被 jQuery.fx.timer 函数推入 jQuery.timers 堆栈，
+立刻开始按照 jQuery.fx.interval 的间隔运动。
 
+要想使动画异步，就不能立即调用 Animation。
+jQuery.fn.animate 中使用了 queue 队列，把 Animation 函数的调用封装在 doAnimation 函数中，
+通过把 doAnimation 推入指定的队列，按照队列顺序异步触发 doAnimation，从而异步调用 Animation。
+*/
 function Animation( elem, properties, options ) {
 	var result,
 		stopped,
 		index = 0,
 		length = animationPrefilters.length,
 		deferred = jQuery.Deferred().always( function() {
+			/*
+			① $('div:animated') 可以选出正在进行动画的元素；
+			② 等动画结束后，删除 tick.elem，就不会被匹配出来了
+			*/
 			// don't match elem in the :animated selector
 			delete tick.elem;
 		}),
@@ -15316,10 +15326,30 @@ function Animation( elem, properties, options ) {
 				return false;
 			}
 			/*
-			这里优化了 setInterval(func, 13)
-			由于js单线程机制不能保证每13ms会执行一次。
-			通过createTime()与当前时间对比，动态算出变化尺度。
-			通过这种方式也许原本期望tick执行10次，但浏览器在你延时时间内（比方说2000ms）时间内只给你调用了9次的情况下也能完整完成一个动画。
+			动画的原理：运用定时器循环改变元素属性
+
+			(1) 关于动画，我们很容易想到的方案是：
+			
+			① 执行总次数 = 执行总时间 / 13
+			② 每次增量 = ( 结束值 - 开始值 ) / 执行总次数
+
+			这种方式固然很直观，问题在于：
+			JavaScript是单线程的语言，setTimeout、setInterval定时的向语言的任务队列添加执行代码，
+			但是必须等到队列中已有的代码执行完毕，若遇到长任务，则拖延明显。
+			例如 setInterval(func, 13)，实际上并不能保证每 13ms 会执行一次 func。
+
+			(2) 所以，jQuery 摒弃以上方案，采用以下方案：
+						
+			① remaining = Math.max( 0, animation.startTime + animation.duration - currentTime )
+			   开始时间 + 总持续时间 - 当前时间 -> 剩余持续时间
+			② temp = remaining / animation.duration || 0
+			   剩余持续时间 / 总持续时间
+			③ percent = 1 - temp
+			   1 - 剩余持续时间 / 总持续时间 -> 已经持续时间 / 总持续时间
+			④ this.now = ( this.end - this.start ) * percent + this.start;
+			   时间流逝了多少比例，距离就相应移动多少比例
+
+			通过这种方式也许原本期望 tick 执行 100 次，但浏览器在你延时时间内（比方说 2000ms）时间内只给你调用了 90 次的情况下也能完整完成一个动画。
 			*/
 			var currentTime = fxNow || createFxNow(),
 				remaining = Math.max( 0, animation.startTime + animation.duration - currentTime ),
@@ -15329,6 +15359,7 @@ function Animation( elem, properties, options ) {
 				index = 0,
 				length = animation.tweens.length;
 
+			// 依次执行每个属性对应的动画
 			for ( ; index < length ; index++ ) {
 				animation.tweens[ index ].run( percent );
 			}
@@ -15367,6 +15398,7 @@ function Animation( elem, properties, options ) {
 					return this;
 				}
 				stopped = true;
+				// 当前 animate 对应的每一个 tween 都直接运动到最终状态
 				for ( ; index < length ; index++ ) {
 					animation.tweens[ index ].run( 1 );
 				}
@@ -15397,7 +15429,20 @@ function Animation( elem, properties, options ) {
 	if ( jQuery.isFunction( animation.opts.start ) ) {
 		animation.opts.start.call( elem, animation );
 	}
-
+	
+	/*
+	① jQuery.fx.timer 方法把每个正在运动的 tick 加入 jQuery.timers 数组
+	② jQuery 动画只有一个唯一的定时器 setInterval，它会循环调用 jQuery.timers 里的每个 tick 函数
+	③ 一个定时器对应多个 animate，一个 animate 对应一个 tick，一个 tick 对应多个 tween
+		
+		setInterval	
+			├── animate ── tick
+			├── animate ── tick
+			├── animate ── tick
+								 ├── tween
+								 ├── tween
+								 ├── tween
+	*/
 	jQuery.fx.timer(
 		// tick 是一个函数，这里给它添加 3 个属性，然后返回 tick 函数
 		jQuery.extend( tick, {
@@ -15746,33 +15791,106 @@ jQuery.fn.extend({
 			// animate to the value specified
 			.end().animate({ opacity: to }, speed, easing, callback );
 	},
+	/*
+	queue 队列是一个堆栈，比如 elem 的 "fx" 队列，jQuery.queue(elem, "fx") 即为缓存 jQuery._data(elem, "fxqueue")。
+	每个元素的 "fx" 队列都是不同的，因此不同元素或不同队列之间的动画是同步的，相同元素且相同队列之间的动画是异步的。
+	添加到 "fx" 队列的函数若是队列中当前的第一个函数，将被直接触发，而后面添加到队列中的函数需要手动调用 jQuery.dequeue 才会启动执行。
+	
+	jQuery.fn.animate() 调用核心函数 Animation( elem, properties, options )
+	*/
 	animate: function( prop, speed, easing, callback ) {
+			// prop 是否为空对象
 		var empty = jQuery.isEmptyObject( prop ),
-			// 修正后的持续时间、缓动方法、回调函数等组成的配置对象
+			// 修正后的配置对象，包括持续时间、缓动方法、回调函数等
 			optall = jQuery.speed( speed, easing, callback ),
 			doAnimation = function() {
 				// Operate on a copy of prop so per-property easing won't be lost
+				// Animation 一经调用，内部的 tick 函数将被 jQuery.fx.timer 函数推入 jQuery.timers 堆栈，立刻开始按照 jQuery.fx.interval 的间隔运动。
 				var anim = Animation( this, jQuery.extend( {}, prop ), optall );
 
 				// Empty animations, or finishing resolves immediately
+				/*
+				① jQuery.fn.finish 执行时 jQuery._data( this, "finish" ) 设置为 "finish"
+				② prop 是空对象或有结束标记，立即终止该动画
+				*/
 				if ( empty || data_priv.get( this, "finish" ) ) {
 					anim.stop( true );
 				}
 			};
 			doAnimation.finish = doAnimation;
-
+		
+		/*
+		① prop 是空对象，则直接同步执行 doAnimation
+		② optall.queue === false 表示不使用 queue 队列机制，也是直接同步执行 doAnimation
+		③ 否则，将 doAnimation 加入队列，排队
+		*/
 		return empty || optall.queue === false ?
 			this.each( doAnimation ) :
 			this.queue( optall.queue, doAnimation );
+		/*
+		并不是添加到队列的都是 doAnimation，比如 jQuery.fn.delay 方法源码中有：
+		return this.queue( type, function( next, hooks ) {
+			var timeout = window.setTimeout( next, time );
+			hooks.stop = function() {
+				window.clearTimeout( timeout );
+			};
+		} );
+		*/
 	},
 	/*
+	动画队列中除了 doAnimation ，还可以是普通的方法，比如这里用 queue 入队了一个普通匿名方法
+
+	$('#div1').ckick(function(){
+		$(this).animate({width:300},2000).queue('fx',function(){
+			$(this).dequeue(); // dequeue 方法没写实参，默认是 'fx'
+		}).animate({left:300},2000);
+	}); 
+
 	type 表示队列名称
 	clearQueue 表示是否清空未执行完的动画队列
 	gotoEnd 表示是否将正在执行的动画跳到结束位置
+
+	举个例子：http://www.w3school.com.cn/tiy/t.asp?f=jquery_stop_params
+	$("#start").click(function(){
+		$("div").animate({left:'100px'},5000);
+		$("div").animate({fontSize:'3em'},5000);
+	});
+	
+	① clearQueue、gotoEnd 均为 false，会停止当前活动的动画，但允许已排队的动画向前执行
+	$("#stop").click(function(){
+		$("div").stop();
+	});
+	假如在执行移动过程中，会马上停止移动，然后立即执行字体变大的动画
+
+	② clearQueue 为 true，gotoEnd 为 false，停止当前活动的动画，并清空动画队列；因此元素上的所有动画都会停止
+	$("#stop").click(function(){
+		$("div").stop(true);
+	});
+	假如在执行移动过程中，马上停止移动，也不会执行后面的动画了
+
+	③ clearQueue 为 false，gotoEnd 为 true，立即执行完当前动画，然后继续执行后面的动画
+	$("#stop").click(function(){
+		$("div").stop(false,true);
+	});
+	假如在执行移动过程中，立即移动到 100px 处，然后执行后面的字体变大动画
+
+	④ clearQueue、gotoEnd 均为 true，立即完成当前活动的动画，然后停下来
+	$("#stop").click(function(){
+		$("div").stop(true,true);
+	});
+	a. 假如在执行移动过程中，立即移动到 100px 处，并不会执行后面的字体变大动画
+	b. 假如在执行字体变大过程中，立即字体变大为 3em，然后停下来
 	*/
 	stop: function( type, clearQueue, gotoEnd ) {
+		
+		/*
+		hooks.stop = function() {
+			clearTimeout( timeout );
+		};
+		*/
 		var stopQueue = function( hooks ) {
 			var stop = hooks.stop;
+			// 删除 hooks.stop ，紧接着执行 stop 清除了延迟定时器，导致下一个动画不会触发
 			delete hooks.stop;
 			stop( gotoEnd );
 		};
@@ -15796,6 +15914,7 @@ jQuery.fn.extend({
 				timers = jQuery.timers,
 				data = data_priv.get( this );
 
+			// 调用 stopQueue 使得动画之间的驱动断开
 			if ( index ) {
 				if ( data[ index ] && data[ index ].stop ) {
 					stopQueue( data[ index ] );
@@ -15809,11 +15928,22 @@ jQuery.fn.extend({
 				}
 			}
 
-			// index 为 0 时停止循环
+			
 			for ( index = timers.length; index--; ) {
+				// tick 的 elem 和 queue 都能对应上
 				if ( timers[ index ].elem === this && (type == null || timers[ index ].queue === type) ) {
+					// 运动到最终状态
 					timers[ index ].anim.stop( gotoEnd );
 					dequeue = false;
+					/*
+					dequeue === false && gotoEnd == 真
+
+					意味着肯定执行了这里，gotoEnd 为真会怎样呢？
+
+					gotoEnd 为 true，stop 内部会调用 run(1)，并执行 deferred.resolveWith，
+					从而执行 complete 函数，从而 dequeue 下一个动画
+					*/
+					// jQuery.timers 中删除这个 tick
 					timers.splice( index, 1 );
 				}
 			}
@@ -15821,19 +15951,56 @@ jQuery.fn.extend({
 			// start the next in the queue if the last step wasn't forced
 			// timers currently will call their complete callbacks, which will dequeue
 			// but only if they were gotoEnd
-			// 虽然当前 animate 停止了，但是会继续下一个 animate
+			/*
+			也就是说：dequeue === false && gotoEnd == 真 才不会执行下面的出队操作，其他的所有情况都会执行出队
+
+			上面分析了 dequeue === false && gotoEnd == 真 会进行一次 dequeue，所以这里不能重复 dequeue
+			*/
 			if ( dequeue || !gotoEnd ) {
 				jQuery.dequeue( this, type );
 			}
 		});
 	},
 	finish: function( type ) {
+		/*
+		① type === undefined/null -> type = 'fx'
+		② 其他 -> type = type
+		*/
 		if ( type !== false ) {
 			type = type || "fx";
 		}
 		return this.each(function() {
 			var index,
 				data = data_priv.get( this ),
+				/*
+				这里取出了 queue，下面又执行 jQuery.queue( this, type, [] )，清空队列，那么变量 queue 会跟着被清空吗？
+				
+				queue 并不会跟着被清空，原因如下：
+				jQuery.queue( this, type, [] )
+				-> data_priv.access( this, type, jQuery.makeArray(data) )
+				   注意 jQuery.makeArray(data) 首先回新建一个空数组 []，然后将 data 加入这个空数组 []
+				-> data_priv.set( this, type, [] )
+				-> data_priv.cache[data_priv.key( this )][type] = []
+
+				也就是说，data_priv.cache[data_priv.key( this )][type] 指向了一个新的空数组，而 queue 还指向原来的那个数组
+				
+				举个简单例子：
+				var data = {
+					fxqueue : [1,2,3]
+				},
+				queue = data.fxqueue;
+				
+				打印一下：
+				console.log(data.fxqueue) -> [1,2,3]
+				console.log(queue) -> [1,2,3]
+				
+				然后将 data.fxqueue 指向一个新的空数组：
+				data.fxqueue = [];
+
+				再打印一下：
+				console.log(data.fxqueue) -> []
+				console.log(queue) -> [1,2,3]
+				*/
 				queue = data[ type + "queue" ],
 				hooks = data[ type + "queueHooks" ],
 				timers = jQuery.timers,
@@ -15844,30 +16011,50 @@ jQuery.fn.extend({
 			data.finish = true;
 
 			// empty the queue first
-			// 清空队列
+			// 清空队列，相当于 data_priv.cache[data_priv.key( this )][type] = []
 			jQuery.queue( this, type, [] );
 
 			if ( hooks && hooks.stop ) {
-				// 停止，直接到结束位置
+				// 停止
 				hooks.stop.call( this, true );
 			}
 
 			// look for any active animations, and finish them
 			for ( index = timers.length; index--; ) {
+				// tick 的 elem 和 queue 都能对应上
 				if ( timers[ index ].elem === this && timers[ index ].queue === type ) {
+					// 动画停止，直接到结束状态
 					timers[ index ].anim.stop( true );
+					// jQuery.timers 中删除这个 tick
 					timers.splice( index, 1 );
 				}
 			}
 
 			// look for any animations in the old queue and finish them
 			for ( index = 0; index < length; index++ ) {
+				/*
+				① 已经执行的 doAnimation 已经不在 queue 中了
+				② 所以，在 queue 中的都是没执行，没执行的除了 doAnimation 还有可能其他的普通函数
+				   如果是 doAnimation 的就调用 anim.stop( true ) 直接到结束状态
+				*/
 				if ( queue[ index ] && queue[ index ].finish ) {
+					/*
+				    jQuery.fn.animate 中有 doAnimation.finish = doAnimation
+
+					遍历执行队列中所有 doAnimation 函数（有 finish 属性的才是 doAnimation 函数）。
+					由于缓存中带有 finish 标记，动画对象一创建就将调用 anim.stop( true ) 
+					
+					也就是说这里这里并不会真正执行动画，而是直接变到结束位置
+
+					jQuery.fn.finish -> doAnimation -> anim.stop( true )
+					*/
+					
 					queue[ index ].finish.call( this );
 				}
 			}
 
 			// turn off finishing flag
+			// 删除结束状态
 			delete data.finish;
 		});
 	}
@@ -15926,7 +16113,7 @@ jQuery.speed = function( speed, easing, fn ) {
 	/*
 	修正持续时间遵循以下规则：
 	① 若 jQuery.fx.off 为真，也就是全局设定关闭动画，那么持续时间强制为 0；
-	② 若 jQuery.fx.off 为假，可以动画
+	② 若 jQuery.fx.off 为假：
 	   a. 若设置的持续时间是数字，那就用这个数字；
 	   b. 若设置的持续时间不是数字，那么就去 jQuery.fx.speeds 中去匹配，
 	      'slow' 对应 600 毫秒，'fast' 对应 200 毫秒，其他所有都是默认的 400 毫秒。
@@ -15951,8 +16138,10 @@ jQuery.speed = function( speed, easing, fn ) {
 		}
 		
 		/*
-		每个元素的 fx 队列都是不同的，因此不同元素或不同队列之间的动画是同步的，相同元素且相同队列之间的动画是异步的。
-		添加到 fx 队列的函数若是队列中当前的第一个函数，将被直接触发，而添加到其他队列中的函数需要手动调用 jQuery.dequeue 才会启动执行。
+		每个元素的 "fx" 队列都是不同的，因此不同元素或不同队列之间的动画是同步的，相同元素且相同队列之间的动画是异步的。
+		添加到 "fx" 队列的函数若是队列中当前的第一个函数，将被直接触发，而后面添加到队列中的函数需要手动调用 jQuery.dequeue 才会启动执行。
+		
+		每个 elem 可以添加多个 animate，等到上一个 animate 执行结束的时候，就出队（执行）下一个 animate
 		*/
 		if ( opt.queue ) {
 			jQuery.dequeue( this, opt.queue );
@@ -15977,7 +16166,7 @@ jQuery.easing = {
 };
 
 /*
-整个动画机制只使用一个统一的 setInterval ，把 tick 推入堆栈 jQuery.timers ，
+整个动画机制只使用一个定时器 setInterval ，把 tick 推入堆栈 jQuery.timers ，
 每次定时器调用 jQuery.fx.tick() 遍历堆栈里的函数，
 通过 tick 的返回值知道是否运动完毕，完毕的栈出，没有动画的时候就 jQuery.fx.stop() 暂停。
 jQuery.fx.start() 开启定时器前会检测是开启状态，防止重复开启。
@@ -16030,7 +16219,7 @@ jQuery.fx.timer = function( timer ) {
 // 每帧动画时间间隔
 jQuery.fx.interval = 13;
 
-// 开始动画
+// 开始动画，整个 jQuery 动画系统就这一个定时器 setInterval
 jQuery.fx.start = function() {
 	if ( !timerId ) {
 		timerId = setInterval( jQuery.fx.tick, jQuery.fx.interval );
