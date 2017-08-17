@@ -15289,10 +15289,16 @@ function createFxNow() {
 
 function createTween( value, prop, animation ) {
 	var tween,
+        /*
+        ① tweeners[ prop ] 理应为一个数组，数组元素都是函数
+        ② collection 就是一个数组，是数组 tweeners[ prop ] 和数组 tweeners[ "*" ] 的合集
+         */
+        // tweeners[ prop ] 
 		collection = ( tweeners[ prop ] || [] ).concat( tweeners[ "*" ] ),
 		index = 0,
 		length = collection.length;
 	for ( ; index < length; index++ ) {
+        // 依次执行这一组函数，只要有一个返回值不为假，那就将这个返回值作为 createTween 函数的返回值
 		if ( (tween = collection[ index ].call( animation, prop, value )) ) {
 
 			// we're done with this property
@@ -15302,11 +15308,34 @@ function createTween( value, prop, animation ) {
 }
 /*
 Animation 一经调用，内部的 tick 函数将被 jQuery.fx.timer 函数推入 jQuery.timers 堆栈，
-立刻开始按照 jQuery.fx.interval 的间隔运动。
+立刻开始按照 jQuery.fx.interval 的间隔运动。Animation 函数返回一个animation对象（也是promise对象）。
 
-要想使动画异步，就不能立即调用 Animation。
+所以要想使动画异步，就不能立即调用 Animation。
+
 jQuery.fn.animate 中使用了 queue 队列，把 Animation 函数的调用封装在 doAnimation 函数中，
 通过把 doAnimation 推入指定的队列，按照队列顺序异步触发 doAnimation，从而异步调用 Animation。
+
+参数示例：
+properties :{
+    opacity: 0.25,
+    left: '50',
+    height: 'toggle'
+}
+options : {
+    duration :1000,
+    specialEasing: {
+        height: 'linear'
+    },
+    step: function(now, fx) {
+        console.log('step')
+    },
+    progress:function(){
+        console.log('progress')
+    },
+    complete:function(){
+        console.log('动画完成')
+    }
+}
 */
 function Animation( elem, properties, options ) {
 	var result,
@@ -15321,6 +15350,14 @@ function Animation( elem, properties, options ) {
 			// don't match elem in the :animated selector
 			delete tick.elem;
 		}),
+        /*  
+        tick 函数是对 properties 中多属性执行动画。每个属性的作为一个运动对象 tween，然后把他们依次放入 animation.tweens 中（一个堆栈 []）。
+        tick 函数内通过时间换算出百分比 percent（过去的时间 / 总持续时间），然后传入 tween.run() 来完成一步运动。
+
+        tick 函数返回值：
+        a. 如果 animate 执行结束或被停止，返回 false；
+        b. 如果 animate 动画过程中，返回剩余的动画时间
+         */
 		tick = function() {
 			if ( stopped ) {
 				return false;
@@ -15364,10 +15401,12 @@ function Animation( elem, properties, options ) {
 				animation.tweens[ index ].run( percent );
 			}
 
+            // 每执行一次 tick 方法，就触发一次 deferred 的进行中状态
 			deferred.notifyWith( elem, [ animation, percent, remaining ]);
 
 			if ( percent < 1 && length ) {
 				return remaining;
+            // percent === 1 或 length === 0，说明这个 animate 结束了，那就触发 deferred 的成功状态
 			} else {
 				deferred.resolveWith( elem, [ animation ] );
 				return false;
@@ -15384,6 +15423,10 @@ function Animation( elem, properties, options ) {
 			tweens: [],
 			// 创建单个属性运动对象
 			createTween: function( prop, end ) {
+                /*
+                每个属性运动的 easing 是可以不同的，options.easing 可以定义公用样式，
+                但优先级是低于 options.specialEasing.prop 这样对属性直接指定的，每个属性的easing属性可能不一样。
+                 */
 				var tween = jQuery.Tween( elem, animation.opts, prop, end,
 						animation.opts.specialEasing[ prop ] || animation.opts.easing );
 				animation.tweens.push( tween );
@@ -15459,26 +15502,58 @@ function Animation( elem, properties, options ) {
 		.always( animation.opts.always );
 }
 
+/*
+specialEasing 是一个 json 对象，指定某个特定属性的缓动方式
+
+这个 propFilter 方法没有指定返回值，它的作用是修正 props 和 specialEasing 对象
+ */
 function propFilter( props, specialEasing ) {
 	var index, name, easing, value, hooks;
 
 	// camelCase, specialEasing and expand cssHook pass
+    // 遍历 props 中每个属性
 	for ( index in props ) {
+        /*
+            jQuery.camelCase 将 css 属性名转成驼峰写法（将 - 后面的字母转成大写）：
+            eg:
+            margin-top -> marginTop
+            -moz-transform -> MozTransform
+            -webkit-transform -> WebkitTransform
+        */
 		name = jQuery.camelCase( index );
 		easing = specialEasing[ name ];
 		value = props[ index ];
+        // props[ index ] 是数组，则修正 props[ index ] 和 easing
 		if ( jQuery.isArray( value ) ) {
 			easing = value[ 1 ];
 			value = props[ index ] = value[ 0 ];
 		}
 
+        // 属性名转驼峰后和原来的属性名不一样，则用新的属性名替换旧的
 		if ( index !== name ) {
 			props[ name ] = value;
 			delete props[ index ];
 		}
 
+        // 钩子
 		hooks = jQuery.cssHooks[ name ];
+
+        // margin、padding、borderWidth 等属性
 		if ( hooks && "expand" in hooks ) {
+            /*
+            例如：
+            当 name 是 margin 时，
+            jQuery.cssHooks.margin.expand('10px 20px 30px 40px')
+            -> {
+                marginTop : '10px',
+                marginRight : '20px',
+                marginBottom : '30px',
+                marginLeft : '40px',
+            }
+
+            ① 删除 props[ "margin" ] 属性
+            ② 如果 props 中没有 marginTop 等值，则新建 props[ "marginTop" ] 等属性
+            */
 			value = hooks.expand( value );
 			delete props[ name ];
 
@@ -15493,11 +15568,18 @@ function propFilter( props, specialEasing ) {
 		} else {
 			specialEasing[ name ] = easing;
 		}
+        /*
+        不管是 if 还是 else 都会执行 specialEasing[ index ] = easing 表示：
+
+        props[ index ] 是数组时，用 props[ index ] 替换原来的 specialEasing[ name ]
+         */
 	}
 }
 
+// jQuery.Animation 是 Animation 的超集
 jQuery.Animation = jQuery.extend( Animation, {
 
+    // props 为多个属性，这个函数的作用是，为每个属性 prop 建立一个数组 tweeners[ prop ]，然后将 callback 函数加入到每一个数组最前面
 	tweener: function( props, callback ) {
 		if ( jQuery.isFunction( props ) ) {
 			callback = props;
@@ -15510,9 +15592,12 @@ jQuery.Animation = jQuery.extend( Animation, {
 			index = 0,
 			length = props.length;
 
+        // tweeners 是一个 json 对象，它的每个属性都是数组，数组元素都是函数
 		for ( ; index < length ; index++ ) {
 			prop = props[ index ];
+            // 若对应属性没初始化，则初始化为 []
 			tweeners[ prop ] = tweeners[ prop ] || [];
+            // callback 加入到数组最前面
 			tweeners[ prop ].unshift( callback );
 		}
 	},
@@ -16174,6 +16259,7 @@ jQuery.fx.start() 开启定时器前会检测是开启状态，防止重复开启。
 这样就做到了需要时自动开启，不需要时自动关闭。
 */
 jQuery.timers = [];
+// Tween.prototype.init 是 tween 对象的构造函数
 jQuery.fx = Tween.prototype.init;
 
 // 动画帧，遍历执行 jQuery.timers 数组里的方法
