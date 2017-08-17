@@ -526,6 +526,9 @@ jQuery.fn = jQuery.prototype = {
     $(function(){})
     $([]), $({})
 
+    所有选择器形式参考：
+    http://www.w3school.com.cn/jquery/jquery_ref_selectors.asp
+
     */
 	init: function( selector, context, rootjQuery ) {
 		var match, elem;
@@ -15529,9 +15532,9 @@ function Animation( elem, properties, options ) {
 			├── animate ── tick
 			├── animate ── tick
 			├── animate ── tick
-								 ├── tween
-								 ├── tween
-								 ├── tween
+						    ├── tween
+						    ├── tween
+							├── tween
 	*/
 	jQuery.fx.timer(
 		// tick 是一个函数，这里给它添加 3 个属性，然后返回 tick 函数
@@ -16088,6 +16091,24 @@ jQuery.each([ "toggle", "show", "hide" ], function( i, name ) {
 			*/
 	};
 });
+/*
+#ani {
+    background: #0ff;
+    margin: 30px;
+    padding: 30px;
+    height: 300px;
+    width: 300px;
+}
+<div id="ani"></div>
+
+$('#ani').hide(20000) 执行过程中，在 chrome 调试面板中可以看到 #ani 的 style 属性在不停地变化，其中一个时刻为：
+
+style = "overflow: hidden; height: 149.034px; padding: 14.9034px; margin: 14.9034px; width: 149.034px; opacity: 0.49678;"
+ 
+等到动画结束，style 变为：
+
+style = "display: none;"
+*/
 
 jQuery.fn.extend({
 	fadeTo: function( speed, to, easing, callback ) {
@@ -16370,7 +16391,7 @@ jQuery.fn.extend({
 // Generate parameters to create a standard animation
 /*
 生成一个属性组成的 json 对象，作为 jQuery.fn.animate() 的第一个参数，例如
-genFx( 'show', true) 返回：
+show 方法的 props 为 genFx( 'show', true)：
 {
     height : "show"
 	width : "show"
@@ -16385,7 +16406,7 @@ genFx( 'show', true) 返回：
 	paddingTop : "show"
 }
 
-genFx( 'show' ) 返回：
+slideDown 方法的 props 为 genFx( 'show' )：
 {
 	height : "show"
 	marginBottom : "show"
@@ -16393,6 +16414,8 @@ genFx( 'show' ) 返回：
 	paddingBottom : "show"
 	paddingTop : "show"
 }	
+
+slideDown 动画和 show 动画的唯一区别就是前者没有水平方向上的变化
 */
 function genFx( type, includeWidth ) {
 	var which,
@@ -16421,7 +16444,8 @@ function genFx( type, includeWidth ) {
 }
 
 /*
-genFx("show") 
+
+jQuery.fn.slideDown 动画变化的属性为：genFx("show") 
 -> { 
 	height: "show", 
 	paddingTop: "show", 
@@ -16465,7 +16489,7 @@ jQuery.speed = function( speed, easing, fn ) {
 	② 若 jQuery.fx.off 为假：
 	   a. 若设置的持续时间是数字，那就用这个数字；
 	   b. 若设置的持续时间不是数字，那么就去 jQuery.fx.speeds 中去匹配，
-	      'slow' 对应 600 毫秒，'fast' 对应 200 毫秒，其他所有都是默认的 400 毫秒。
+	      'slow' 对应 600 毫秒，'fast' 对应 200 毫秒，其他所有情况都是默认的 400 毫秒。
 	*/
 	opt.duration = jQuery.fx.off ? 0 : typeof opt.duration === "number" ? opt.duration :
 		opt.duration in jQuery.fx.speeds ? jQuery.fx.speeds[ opt.duration ] : jQuery.fx.speeds._default;
