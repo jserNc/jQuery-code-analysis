@@ -15214,6 +15214,7 @@ var fxNow, timerId,
 	rrun = /queueHooks$/,
 	animationPrefilters = [ defaultPrefilter ],
 	tweeners = {
+		// 这数组里的函数作用就是创建一个 tween ，然后修正 tween，最后返回 tween
 		"*": [function( prop, value ) {
 			// 实际调用时，这里的 this 是指 animation
 			var tween = this.createTween( prop, value ),
@@ -15227,23 +15228,38 @@ var fxNow, timerId,
 				-> ["20px", undefined, "20", "px", index: 0, input: "20px"]
 				*/
 				parts = rfxnum.exec( value ),
-				// 单位
+				/*
+				① unit 指单位
+				② jQuery.cssNumber 是指不需要单位的属性，比如 opacity、fontWeight 等
+				③ unit 为 parts[ 3 ] 或 "" 或 "px"
+				*/
 				unit = parts && parts[ 3 ] || ( jQuery.cssNumber[ prop ] ? "" : "px" ),
+				
 
 				// Starting value computation is required for potential unit mismatches
+				/*
+				① ( jQuery.cssNumber[ prop ] || unit !== "px" && +target ) false，start 为 false
+				② ( jQuery.cssNumber[ prop ] || unit !== "px" && +target ) 为 true，表示 prop 属性没单位，或者单位不是 px
+				   start = rfxnum.exec( jQuery.css( tween.elem, prop ) )
+				   -> ["20px", undefined, "20", "px", index: 0, input: "20px"] 这种形式数组
+				*/
 				start = ( jQuery.cssNumber[ prop ] || unit !== "px" && +target ) &&
 					rfxnum.exec( jQuery.css( tween.elem, prop ) ),
 				scale = 1,
 				maxIterations = 20;
 
+			// prop 原单位和当前要设置的单位不一样，修正 start
 			if ( start && start[ 3 ] !== unit ) {
 				// Trust units reported by jQuery.css
+				// unit 没值的时候，用 jQuery.css 取出来的单位
 				unit = unit || start[ 3 ];
 
 				// Make sure we update the tween properties later on
+				// parts 为 null 是强制改为 []
 				parts = parts || [];
 
 				// Iteratively approximate from a nonzero starting point
+				// target 转为数值，赋给 start
 				start = +target || 1;
 
 				do {
@@ -15261,10 +15277,17 @@ var fxNow, timerId,
 			}
 
 			// Update tween properties
+			// 修正 tween 的属性
 			if ( parts ) {
 				start = tween.start = +start || +target || 0;
 				tween.unit = unit;
 				// If a +=/-= token was provided, we're doing a relative animation
+				/*
+				rfxnum.exec('+=20px')
+				-> ["+=20px", "+", "20", "px", index: 0, input: "+=20px"]
+
+				parts[ 1 ] 为真，说明是相对值
+				*/
 				tween.end = parts[ 1 ] ?
 					start + ( parts[ 1 ] + 1 ) * parts[ 2 ] :
 					+parts[ 2 ];
@@ -15287,18 +15310,26 @@ function createFxNow() {
 	return ( fxNow = jQuery.now() );
 }
 
+// 实际调用 animation.createTween( prop, value ) -> animation.tweens.push( tween ) 给动画 animation 添加新的 tween
 function createTween( value, prop, animation ) {
 	var tween,
         /*
-        ① tweeners[ prop ] 理应为一个数组，数组元素都是函数
-        ② collection 就是一个数组，是数组 tweeners[ prop ] 和数组 tweeners[ "*" ] 的合集
+        ① tweeners[ prop ] 为数组，数组元素都是函数
+        ② collection 也是数组，是数组 tweeners[ prop ] 和数组 tweeners[ "*" ] 的合集
          */
-        // tweeners[ prop ] 
 		collection = ( tweeners[ prop ] || [] ).concat( tweeners[ "*" ] ),
 		index = 0,
 		length = collection.length;
+	// 依次执行这一组函数，只要有一个返回值不为假，那就将这个返回值作为整个 createTween 函数的返回值
 	for ( ; index < length; index++ ) {
-        // 依次执行这一组函数，只要有一个返回值不为假，那就将这个返回值作为 createTween 函数的返回值
+		/*
+		collection[ index ] 函数内部会执行 this.createTween( prop, value )
+		也就是：animation.createTween( prop, value )
+		也就是：先创建一个 tween，然后 animation.tweens.push( tween ) 
+
+		collection[ index ].call( animation, prop, value ) 的作用就是创建一个 tween，
+		然后对这个 tween 进行修正，最后返回这个 tween
+		*/
 		if ( (tween = collection[ index ].call( animation, prop, value )) ) {
 
 			// we're done with this property
@@ -15432,6 +15463,7 @@ function Animation( elem, properties, options ) {
 				animation.tweens.push( tween );
 				return tween;
 			},
+			// 停止动画
 			stop: function( gotoEnd ) {
 				var index = 0,
 					// if we are going to the end, we want to run all the tweens
@@ -15441,7 +15473,12 @@ function Animation( elem, properties, options ) {
 					return this;
 				}
 				stopped = true;
-				// 当前 animate 对应的每一个 tween 都直接运动到最终状态
+
+				/*
+				当前 animate 对应的每一个 tween 都直接运动到最终状态
+
+				如果 gotoEnd 为 false，那么 length 为 0 ，就不会执行这个 for 循环
+				*/
 				for ( ; index < length ; index++ ) {
 					animation.tweens[ index ].run( 1 );
 				}
@@ -15458,17 +15495,27 @@ function Animation( elem, properties, options ) {
 		}),
 		props = animation.props;
 
+	// 修正 props 和 specialEasing 对象
 	propFilter( props, animation.opts.specialEasing );
 
+	// 对动画相关的配置属性，元素属性等做一些修正
 	for ( ; index < length ; index++ ) {
+		/*
+		animationPrefilters = [ defaultPrefilter ] 是个数组默认只有一项 defalutPrefilter 
+		
+		defalutPrefilter 的作用是 show/hide/toggle 机制处理、inline 元素处理等等
+		*/
 		result = animationPrefilters[ index ].call( animation, elem, props, animation.opts );
+		// defaultPrefilter() 没有返回值，默认是 undefined，它执行完不会 return。除非是 animationPrefilters 中其他方法有返回值
 		if ( result ) {
 			return result;
 		}
 	}
 
+	// 对每一个属性，创建一个 tween，加入 animation.tweens
 	jQuery.map( props, createTween, animation );
 
+	// 如果指定了开始前的回调函数，那就执行这个函数
 	if ( jQuery.isFunction( animation.opts.start ) ) {
 		animation.opts.start.call( elem, animation );
 	}
@@ -15602,16 +15649,25 @@ jQuery.Animation = jQuery.extend( Animation, {
 		}
 	},
 
+	// 向 animationPrefilters = [ defaultPrefilter ] 这个数组添加函数
 	prefilter: function( callback, prepend ) {
 		if ( prepend ) {
+			// 函数加在数组最前面
 			animationPrefilters.unshift( callback );
 		} else {
+			// 函数加在数组最后面
 			animationPrefilters.push( callback );
 		}
 	}
 });
 
 // 默认过滤方法
+/*
+defaultPrefilter 是数组 animationPrefilters = [ defaultPrefilter ] 中的元素
+
+Animation 方法会执行：
+result = animationPrefilters[ index ].call( animation, elem, props, animation.opts )
+*/
 function defaultPrefilter( elem, props, opts ) {
 	/* jshint validthis: true */
 	var prop, value, toggle, tween, hooks, oldfire,
@@ -15619,13 +15675,14 @@ function defaultPrefilter( elem, props, opts ) {
 		anim = this,
 		orig = {},
 		style = elem.style,
-		// element 元素是否可见
+		// element 元素是否可见，isHidden( elem ) 为 true 表示元素隐藏了
 		hidden = elem.nodeType && isHidden( elem ),
 		dataShow = data_priv.get( elem, "fxshow" );
 
 	// handle queue: false promises
 	if ( !opts.queue ) {
 		hooks = jQuery._queueHooks( elem, "fx" );
+		// 初始化 hooks.unqueued 
 		if ( hooks.unqueued == null ) {
 			hooks.unqueued = 0;
 			oldfire = hooks.empty.fire;
@@ -15642,6 +15699,7 @@ function defaultPrefilter( elem, props, opts ) {
 			// before this completes
 			anim.always(function() {
 				hooks.unqueued--;
+				// 当动画队列长度为 0 的时候，清理缓存
 				if ( !jQuery.queue( elem, "fx" ).length ) {
 					hooks.empty.fire();
 				}
@@ -15650,24 +15708,32 @@ function defaultPrefilter( elem, props, opts ) {
 	}
 
 	// height/width overflow pass
+	// 如果 height、width 等属性需要动画，那么 inline 元素得变为 inline-block 才有效果
 	if ( elem.nodeType === 1 && ( "height" in props || "width" in props ) ) {
 		// Make sure that nothing sneaks out
 		// Record all 3 overflow attributes because IE9-10 do not
 		// change the overflow attribute when overflowX and
 		// overflowY are set to the same value
+		/*
+		① 记录 3 个 overflow 属性。因为在 IE9-10 下，当 overflowX、overflowY 设置为同样的值后，overflow 属性不会改变
+		② 下面会将 overflow 设为 hidden，等动画结束，再还原原来的值
+		*/
 		opts.overflow = [ style.overflow, style.overflowX, style.overflowY ];
 
 		// Set display property to inline-block for height/width
 		// animations on inline elements that are having width/height animated
 		if ( jQuery.css( elem, "display" ) === "inline" &&
 				jQuery.css( elem, "float" ) === "none" ) {
-			// 强制改为 inline-block
+			// 强制改为 inline-block，因为这样才能修改元素的宽或高
 			style.display = "inline-block";
 		}
 	}
 
+	// opts.overflow 有值，说明 height、width 等属性需要动画
 	if ( opts.overflow ) {
+		// 将 overflow 强制改为 hidden，这样就不会因为  height、width 等改变导致样式错乱
 		style.overflow = "hidden";
+		// 动画结束，将 overflow 属性还原
 		anim.always(function() {
 			style.overflow = opts.overflow[ 0 ];
 			style.overflowX = opts.overflow[ 1 ];
@@ -15675,47 +15741,122 @@ function defaultPrefilter( elem, props, opts ) {
 		});
 	}
 
+	
+	/*
+	例如 props : {
+		opacity: 0.25,
+		left: '50',
+		height: 'toggle'
+	}
 
+	以下 for 循环针对属性值为 toggle|show|hide 的情况，比如上面的 height : 'toggle'
+	*/
 	// show/hide pass
 	for ( prop in props ) {
 		value = props[ prop ];
-		// rfxtypes = /^(?:toggle|show|hide)$/
+		// rfxtypes = /^(?:toggle|show|hide)$/，值为 toggle|show|hide
 		if ( rfxtypes.exec( value ) ) {
+			// 删除这个属性，不过，value 还是原属性值
 			delete props[ prop ];
+			// value === "toggle" 时 toggle 就是 true
 			toggle = toggle || value === "toggle";
+			/*
+			能进入下面的 if 代码块，只有 2 种情况：
+			① hidden === true && value === 'hide'，hidden 为 true 说明已经在隐藏状态，而目标 value 还是隐藏，那就 continue
+			② hidden === false && value === 'show'，hidden 为 true 说明已经在显示状态，而目标 value 还是显示，那就 continue
+
+			continue 会导致不会执行：
+			orig[ prop ] = dataShow && dataShow[ prop ] || jQuery.style( elem, prop ) 
+
+			情形 ② 有个例外，下面会分析。
+			
+			③ 不符合 ① 和 ② 的情形会执行：
+			orig[ prop ] = dataShow && dataShow[ prop ] || jQuery.style( elem, prop );
+			*/
 			if ( value === ( hidden ? "hide" : "show" ) ) {
 
 				// If there is dataShow left over from a stopped hide or show and we are going to proceed with show, we should pretend to be hidden
+				/*
+				dataShow = data_priv.get( elem, "fxshow" )，缓存的一个对象
+
+				① 能进入这个 if 判断，并且 value === "show" 说明 hidden === false，也就是元素处于显示状态
+				② 如果 dataShow[ prop ] 有值，说明这个属性有正在发生的动画，那就按照【隐藏-> 显示】处理，
+				   所以，修正 hidden 为 true ，然后执行：
+				   orig[ prop ] = dataShow && dataShow[ prop ] || jQuery.style( elem, prop );
+
+				综上分析，只要给 orig[ prop ] 赋值，说明要进行显示/隐藏状态转换的
+				*/
+				// 
 				if ( value === "show" && dataShow && dataShow[ prop ] !== undefined ) {
 					hidden = true;
 				} else {
 					continue;
 				}
 			}
+			/*
+			函数一开始定义了 orig = {}
+			
+			&& 优先级 高于 || 
+			① 如果 dataShow[ prop ] 有值，那么复制一份给 orig
+			② 否则，orig 取元素的 style 属性
+
+			一开始，dataShow 是不存在的，取的就是 style 的值，后来运动起来了，dataShow 就有值了，orig[ prop ] 就一直被新值覆盖
+			*/
 			orig[ prop ] = dataShow && dataShow[ prop ] || jQuery.style( elem, prop );
 		}
 	}
+	
+	/*
+	试想：
+	① 没有一个属性值是 value = toggle|show|hide，那么 orig = {}，空对象，就不会执行下面的 if 代码块
+	② 即便有属性值是 value = toggle|show|hide，举个极端例子：假如元素当前处于隐藏状态，hidden === true，而所有的 value = 'hide'
+	   那么，都 continue 了，不会给 orig[ prop ] 赋值，所以，还是不会执行下面的 if 代码块
 
+	③ 假如元素当前处于隐藏状态，hidden === true，只要有一个 value = 'show' 就不会 continue ，就会给 orig[ prop ] 赋值，就会执行下面的 if 代码块
+
+	所以，!jQuery.isEmptyObject( orig ) 意味着肯定需要切换隐藏/显示状态
+	*/
 	if ( !jQuery.isEmptyObject( orig ) ) {
+
 		if ( dataShow ) {
+			// 以 dataShow 中的 hidden 属性为准
 			if ( "hidden" in dataShow ) {
 				hidden = dataShow.hidden;
 			}
+		// 没有 dataShow ，初始化 dataShow
 		} else {
 			dataShow = data_priv.access( elem, "fxshow", {} );
 		}
 
 		// store state if its toggle - enables .stop().toggle() to "reverse"
+		// 如果 toggle 为真，dataShow.hidden 属性取反
 		if ( toggle ) {
 			dataShow.hidden = !hidden;
 		}
+
+		/*
+		dataShow 是这样一个 json 对象：
+		{
+			hidden : true | flase | undefined,
+			prop1 : 20,
+			prop2 : 100,
+			...
+		}
+		*/
+
+		// 目前在隐藏状态，首先将元素显示出来，然后再执行动画变大
 		if ( hidden ) {
+			// 显示元素
 			jQuery( elem ).show();
 		} else {
+			// 目前在显示状态，先执行动画变小，最后将元素隐藏
 			anim.done(function() {
+				// 隐藏元素
 				jQuery( elem ).hide();
 			});
 		}
+
+		// 动画结束，移除缓存 fxshow，还原 style 属性
 		anim.done(function() {
 			var prop;
 
@@ -15724,13 +15865,46 @@ function defaultPrefilter( elem, props, opts ) {
 				jQuery.style( elem, prop, orig[ prop ] );
 			}
 		});
+
+
 		for ( prop in orig ) {
+			/*
+			① createTween 函数的作用是给动画 anim 添加新的 tween
+			
+			② createTween 的第一个参数代表该属性动画的目标值
+			   a. hidden 为 true，说明在隐藏状态，那么动画结果是显示，目标值是 dataShow[ prop ]
+			   b. hidden 为 false，说明在显示状态，那么动画结果是隐藏，目标值是 0
+			*/
 			tween = createTween( hidden ? dataShow[ prop ] : 0, prop, anim );
 
 			if ( !( prop in dataShow ) ) {
+				// prop 的开始值缓存在 dataShow 中
 				dataShow[ prop ] = tween.start;
+				/*
+				为什么要给 hidden 为 true 的时候单独写呢？
+
+				举个例子：
+				加入一开始元素就是隐藏 hidden 为 true，而有属性的 value 为 show，那么该运动到哪里呢？
+				
+				hidden 为 true 时，
+				tween = createTween(  dataShow[ prop ] , prop, anim )
+
+				可是第一次的时候，dataShow[ prop ] 并没有值，为 undefined，那么终点值为多少呢？
+
+				这里将终点值设为起点值 tween.end = tween.start
+
+				tween.start 是该属性当前值（jQuery.css( tween.elem, prop )），因为隐藏元素也是可以有高度的，例如：
+				.div {
+					height : 100px;
+					display : none;
+				}
+				*/
 				if ( hidden ) {
 					tween.end = tween.start;
+					/*
+					① prop === "width" || prop === "height" 开始值为 1
+					② 其他，开始值为 0
+					*/
 					tween.start = prop === "width" || prop === "height" ? 1 : 0;
 				}
 			}
@@ -15858,12 +16032,60 @@ Tween.propHooks.scrollTop = Tween.propHooks.scrollLeft = {
 	}
 };
 
+/*
+jQuery.fn.extend({
+	// 显示 this 下面的所有元素
+	show: function() {
+		return showHide( this, true );
+	},
+	// 隐藏 this 下面的所有元素
+	hide: function() {
+		return showHide( this );
+	},
+	// 显示/隐藏 状态切换
+	toggle: function( state ) {
+		// 参数是布尔值，强制 this 下所有的元素 显示/隐藏
+		if ( typeof state === "boolean" ) {
+			return state ? this.show() : this.hide();
+		}
+
+		// 参数不是布尔值，针对 this 下每一个元素，隐藏的显示，显示的隐藏
+		return this.each(function() {
+			if ( isHidden( this ) ) {
+				jQuery( this ).show();
+			} else {
+				jQuery( this ).hide();
+			}
+		});
+	}
+});
+*/
+
 jQuery.each([ "toggle", "show", "hide" ], function( i, name ) {
+	// jQuery.fn[ "toggle" ] 等方法之前有定义过
 	var cssFn = jQuery.fn[ name ];
 	jQuery.fn[ name ] = function( speed, easing, callback ) {
 		return speed == null || typeof speed === "boolean" ?
+			// 第一个参数为空，或布尔值，用普通方法直接展现/隐藏
 			cssFn.apply( this, arguments ) :
+			// 否则调用动画方法
 			this.animate( genFx( name, true ), speed, easing, callback );
+			/*
+			genFx( 'show', true) 返回：
+			{
+				height : "show"
+				width : "show"
+				opacity : "show"
+				marginBottom : "show"
+				marginLeft : "show"
+				marginRight : "show"
+				marginTop : "show"
+				paddingBottom : "show"
+				paddingLeft : "show"
+				paddingRight : "show"
+				paddingTop : "show"
+			}
+			*/
 	};
 });
 
@@ -16146,6 +16368,32 @@ jQuery.fn.extend({
 });
 
 // Generate parameters to create a standard animation
+/*
+生成一个属性组成的 json 对象，作为 jQuery.fn.animate() 的第一个参数，例如
+genFx( 'show', true) 返回：
+{
+    height : "show"
+	width : "show"
+	opacity : "show"
+    marginBottom : "show"
+	marginLeft : "show"
+	marginRight : "show"
+	marginTop : "show"
+	paddingBottom : "show"
+	paddingLeft : "show"
+	paddingRight : "show"
+	paddingTop : "show"
+}
+
+genFx( 'show' ) 返回：
+{
+	height : "show"
+	marginBottom : "show"
+	marginTop : "show"
+	paddingBottom : "show"
+	paddingTop : "show"
+}	
+*/
 function genFx( type, includeWidth ) {
 	var which,
 		attrs = { height: type },
@@ -16153,7 +16401,13 @@ function genFx( type, includeWidth ) {
 
 	// if we include width, step value is 1 to do all cssExpand values,
 	// if we don't include width, step value is 2 to skip over Left and Right
-	includeWidth = includeWidth? 1 : 0;
+	includeWidth = includeWidth ? 1 : 0;
+	/*
+	cssExpand = [ "Top", "Right", "Bottom", "Left" ]
+
+	① 如果参数 includeWidth 是 true，那么 i 每次加 1，遍历 cssExpand 的所有属性
+	② 否则，那么 i 每次加 2，跳过 cssExpand 的 "Right" 和 "Left" 属性
+	*/
 	for( ; i < 4 ; i += 2 - includeWidth ) {
 		which = cssExpand[ i ];
 		attrs[ "margin" + which ] = attrs[ "padding" + which ] = type;
@@ -16166,6 +16420,16 @@ function genFx( type, includeWidth ) {
 	return attrs;
 }
 
+/*
+genFx("show") 
+-> { 
+	height: "show", 
+	paddingTop: "show", 
+	marginTop: "show", 
+	paddingBottom: "show", 
+	marginBottom: "show"
+}
+*/
 // Generate shortcuts for custom animations
 jQuery.each({
 	slideDown: genFx("show"),
