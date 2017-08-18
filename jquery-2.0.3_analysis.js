@@ -17077,6 +17077,13 @@ jQuery.each( { Height: "height", Width: "width" }, function( name, type ) {
 						elem.body[ "offset" + name ], doc[ "offset" + name ],
 						doc[ "client" + name ]
 					);
+                    /*
+                    Math.max(
+                        document.body[ "scroll" + name ], html[ "scroll" + name ],
+                        document.body[ "offset" + name ], html[ "offset" + name ],
+                        html[ "client" + name ]
+                    );
+                     */
 				}
 
 				return value === undefined ?
@@ -17093,6 +17100,7 @@ jQuery.each( { Height: "height", Width: "width" }, function( name, type ) {
 // (function() {
 
 // The number of elements contained in the matched element set
+// 当前选择器匹配到的元素个数
 jQuery.fn.size = function() {
 	return this.length;
 };
@@ -17100,12 +17108,203 @@ jQuery.fn.size = function() {
 jQuery.fn.andSelf = jQuery.fn.addBack;
 
 // })();
+/*
+说一说模块化：
+
+Java 语言有一个概念叫 package，逻辑上相关的代码写在一个 package 里，外部 import 这个 package 就可以用里面的代码了。
+这种隔离作用域、分离逻辑、组织代码的思想，叫做”模块化“
+
+模块化的好处是：
+* 解决项目中的变量污染问题。 
+* 开发效率高，有利于多人协同开发。 
+* 职责单一，方便代码重用和维护 。 
+* 解决文件依赖问题，无需关注引包顺序 。
+
+可是，JavaScript 在设计的时候并没有提供类似功能。可是随着前端业务的发展，这种模块化的需求愈发明显。所以，在模块化的道路上经过了以下的探索：
+
+① 函数
+
+函数一个功能就是实现特定逻辑的一组语句打包，而且 JavaScript 的作用域就是基于函数的，所以把函数作为模块化的第一步是很自然的事情，
+在一个文件里面编写几个相关函数就是最开始的模块了
+
+// file.js
+
+function fn1(){}
+function fn2(){}
+
+
+缺点：污染了全局变量，无法保证不与其他模块发生变量名冲突，而且模块成员之间没什么关系
+
+② 对象
+
+把所有的模块成员封装在一个对象中
+
+// file.js
+
+var myModule = {
+    v1: 1,
+    v2: 2,
+    fn1: function(){},
+    fn2: function(){}
+}
+
+缺点：外部可以随意修改内部成员 myModel.v1 = 3;
+
+③ 立即执行函数
+
+var myModule = (function(){
+    var v1 = 1;
+    var v2 = 2;
+
+    function fn1(){}
+
+    function fn2(){}
+
+    return {
+        fn1: fn1,
+        fn2: fn2
+    };
+})();
+
+这种形式比较好，jQuery 就是采用这种形式
+
+以上都是 JavaScript 模块化的基础，目前，通行的 JavaScript 模块规范主要有三种：CommonJS、AMD、CMD
+
+(1) CommonJS
+
+第一个流行的模块化规范是由服务器端的 JavaScript 应用带来，CommonJS 规范是由 nodejs 发扬光大。
+
+a. 定义模块
+根据 CommonJS 规范，一个单独的文件就是一个模块。每一个模块都是一个单独的作用域，
+也就是说，在该模块内部定义的变量，无法被其他模块读取，除非定义为 global 对象的属性
+
+b. 模块输出：
+模块只有一个出口，module.exports 对象，我们需要把模块希望输出的内容放入该对象
+
+c. 加载模块：
+加载模块使用 require 方法，该方法读取一个文件并执行，返回文件内部的 module.exports 对象
+
+基本使用
+
+第一步：模块定义 
+
+// myModel.js
+
+var v1 = 1;
+
+function fn1(){}
+
+function fn2(){}
+
+module.exports = {
+    f1 : fn1,
+    f2 : fn2
+}
+
+第二步：加载模块
+
+var myModel = require('./myModel.js');
+myModel.f1();
+
+可以看到，CommonJS 规范中，代码是同步执行的，require 加载模块后，同步读取模块文件内容，并编译执行以得到模块接口。
+这在服务器端是没问题的，服务器端的文件读取都在本地，速度很快。但是这样做在浏览器端读取远程文件显然是不合理的。
+
+(2) AMD
+
+
+AMD 全称 Asynchronous Module Definition，即异步模块定义。它是一个适合浏览器端模块化开发的规范。
+由于 JavaScript 不是原生支持，所以使用 AMD 规范进行页面开发需要用到 RequireJS 库。
+
+requireJS 主要解决两个问题
+
+1. 多个 js 文件可能有依赖关系，被依赖的文件需要早于依赖它的文件加载到浏览器
+2. js 加载的时候浏览器会停止页面渲染，加载文件越多，页面失去响应时间越长
+
+
+a. define 函数定义模块
+
+define(id, dependencies, factory);
+
+id：可选参数，用来定义模块的标识，如果没有提供该参数，取脚本文件名（不包括文件后缀）
+dependencies：是一个当前模块依赖的模块名称数组
+factory：工厂方法，模块初始化要执行的函数或对象。如果为函数，它应该只被执行一次。如果是对象，此对象应该为模块的输出值
+
+
+b. require 函数加载模块
+
+require(dependencies, callback);
+
+dependencies ：表示所依赖的模块
+callback ： 一个回调函数，当前面指定的模块都加载成功后，它将被调用。加载的模块会以参数形式传入该函数，从而在回调函数内部就可以使用这些模块
+
+
+require()函数在加载依赖的函数的时候是异步加载的，这样浏览器不会失去响应，它指定的回调函数，只有前面的模块都加载成功后，才会运行，解决了依赖性的问题。
+
+基本使用：
+
+第一步：引入 requirejs，并且设置入口文件
+
+<script data-main='js/main' src='http://apps.bdimg.com/libs/require.js/2.1.9/require.min.js'></script>
+
+第二步：定义模块 
+
+// myModule.js
+
+define('myModule', ['foo', 'bar'], function ( foo, bar ) {
+
+    var myModule = {
+        fn1 : function(){
+            // code
+        }
+    }
+
+    return myModule;
+});
+
+第三步：加载模块
+
+require(['foo', 'bar'], function ( foo, bar ) {
+    foo.doSomething();
+});
+
+(3) CMD
+
+CMD 全称 Common Module Definition，即通用模块定义，CMD 规范是国内发展出来的，就像 AMD 有个 requireJS，CMD 有个浏览器的实现 SeaJS，
+SeaJS 要解决的问题和 requireJS 一样，只不过在模块定义方式和模块加载（可以说运行、解析）时机上有所不同。
+
+基本使用:
+
+第一步：引入包文件 sea.js
+
+<script src='http://apps.bdimg.com/libs/seajs/2.3.0/sea.js'></script>
+
+第二步：定义模块。
+
+// student.js
+
+define(function(require,exports,module){
+    function Student(){
+        this.name = '张三';
+    }
+    // 对外暴露该模块的接口：
+    module.exports = new Student();
+})
+
+第三步：使用模块。第一个参数是使用模块的路径，第二个回调函数中的参数是所要使用模块暴露出来的一个接口。
+
+seajs.use('./student.js',function(stu){
+    console.log(stu.name); // 张三
+});
+
+*/
+// CommonJS 规范
 if ( typeof module === "object" && module && typeof module.exports === "object" ) {
 	// Expose jQuery as module.exports in loaders that implement the Node
 	// module pattern (including browserify). Do not create the global, since
 	// the user will be storing it themselves locally, and globals are frowned
 	// upon in the Node module world.
 	module.exports = jQuery;
+// AMD 规范
 } else {
 	// Register as a named AMD module, since jQuery can be concatenated with other
 	// files that may use define, but not via a proper concatenation script that
