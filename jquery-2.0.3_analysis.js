@@ -16630,24 +16630,42 @@ if ( jQuery.expr && jQuery.expr.filters ) {
 
 
 
+/*
+作用：设置/返回当前匹配元素相对于文档原点的坐标。该函数只对可见元素有效。
+
+jQuery.fn.offset()   返回的是相对于文档原点的坐标
+jQuery.fn.position() 返回的是相对于最近的定位祖先元素的坐标
+*/
 jQuery.fn.offset = function( options ) {
+	// 有参数，设置每一个匹配元素元素坐标
 	if ( arguments.length ) {
+		// 显式传入参数 undefined，直接返回 this
 		return options === undefined ?
 			this :
+			// 依次设置每一个元素的坐标
 			this.each(function( i ) {
+				// 这里的 this 是原生 dom 元素
 				jQuery.offset.setOffset( this, options, i );
 			});
 	}
 
+	// 剩下的都是没有参数，获取第一个匹配元素元素坐标
 	var docElem, win,
+		// 第一个匹配元素
 		elem = this[ 0 ],
 		box = { top: 0, left: 0 },
+		// document
 		doc = elem && elem.ownerDocument;
 
 	if ( !doc ) {
 		return;
 	}
 
+	/*
+	document 对象是每个 dom 树的根，但是它并不代表树中的一个 html 元素，
+	document.documentElement 属性引用了作为文档根元素的 html 标签，
+	document.body 属性引用了 body 标签 
+	*/
 	docElem = doc.documentElement;
 
 	// Make sure it's not a disconnected DOM node
@@ -16658,9 +16676,25 @@ jQuery.fn.offset = function( options ) {
 	// If we don't have gBCR, just use 0,0 rather than error
 	// BlackBerry 5, iOS 3 (original iPhone)
 	if ( typeof elem.getBoundingClientRect !== core_strundefined ) {
+		/*
+		getBoundingClientRect 方法返回元素的大小及其相对于视口的位置
+		eg:
+		div = $('div')[0];
+		div.getBoundingClientRect()
+		-> { top: 287.625, right: 308, bottom: 387.625, left: 8 ,height: 100, width: 300 }
+		*/
 		box = elem.getBoundingClientRect();
 	}
 	win = getWindow( doc );
+	/*
+	win.pageYOffset 表示垂直方向滚动条已经滚动过的距离，比 document.documentElement.scrollTop 兼容性好
+	win.pageXOffset 表示水平方向滚动条已经滚动过的距离，比 document.documentElement.scrollLeft 兼容性好
+
+	docElem.clientTop  表示 html 元素的上边框宽度
+	docElem.clientLeft 表示 html 元素的左边框宽度
+
+	最终结果返回的是元素相对于页面左上角的坐标
+	*/
 	return {
 		top: box.top + win.pageYOffset - docElem.clientTop,
 		left: box.left + win.pageXOffset - docElem.clientLeft
@@ -16669,39 +16703,80 @@ jQuery.fn.offset = function( options ) {
 
 
 jQuery.offset = {
-
+	// 设置元素相对页面原点的坐标 options : { top : num1, left : num2 }
 	setOffset: function( elem, options, i ) {
 		var curPosition, curLeft, curCSSTop, curTop, curOffset, curCSSLeft, calculatePosition,
+			/*
+			获取元素的定位方式
+			eg:
+			<div id="div" style="position:relative;width:300px;height:100px;background-color:#0ff;"></div>
+			<input type="">
+
+			jQuery.css($("div")[0],"position")
+			-> "relative"
+
+			jQuery.css($("input")[0],"position")
+			"static"
+			*/
 			position = jQuery.css( elem, "position" ),
+			// elem 是原生 dom 节点
 			curElem = jQuery( elem ),
 			props = {};
 
 		// Set position first, in-case top/left are set even on static elem
 		if ( position === "static" ) {
+			// static 定位强制改为 relative 定位
 			elem.style.position = "relative";
 		}
 
+		// 获取当前相对页面原点的坐标
 		curOffset = curElem.offset();
+		/*
+		eg:
+		<div id="div" style="position:relative;width:300px;height:100px;background-color:#0ff;"></div>
+		jQuery.css( div, "top" ) -> "0px"
+		jQuery.css( div, "left" ) -> "0px"
+		*/
 		curCSSTop = jQuery.css( elem, "top" );
 		curCSSLeft = jQuery.css( elem, "left" );
+		// absolute、fixed 等定位，如果 left 或 top 值为 auto，那就需要计算具体值
 		calculatePosition = ( position === "absolute" || position === "fixed" ) && ( curCSSTop + curCSSLeft ).indexOf("auto") > -1;
 
 		// Need to be able to calculate position if either top or left is auto and position is either absolute or fixed
 		if ( calculatePosition ) {
+			/*
+			curElem.position() 获取元素相对于定位的祖先元素的坐标，返回结果是这种形式：
+			{ top: 287.625, left: 8 }
+			*/
 			curPosition = curElem.position();
 			curTop = curPosition.top;
 			curLeft = curPosition.left;
-
+		// 带单位的字符串转为纯数值 "0px" -> 0
 		} else {
 			curTop = parseFloat( curCSSTop ) || 0;
 			curLeft = parseFloat( curCSSLeft ) || 0;
 		}
 
+		// 如果参数 options 是函数，那就执行这个函数，将返回值替换它
 		if ( jQuery.isFunction( options ) ) {
 			options = options.call( elem, i, curOffset );
 		}
 
+		/*
+		props = {};
+
+	    options.top - curOffset.top 为相对原点坐标纵坐标的差值
+		options.left - curOffset.left 为相对原点坐标横坐标的差值
+
+		props : {
+			top : 纵坐标差值 + curTop,
+			left : 横坐标差值 + curLeft
+		}
+
+		通过改变元素的 top、left 值，使得元素相对原点坐标变为 options.top 和 options.left
+		*/
 		if ( options.top != null ) {
+			
 			props.top = ( options.top - curOffset.top ) + curTop;
 		}
 		if ( options.left != null ) {
@@ -16712,6 +16787,7 @@ jQuery.offset = {
 			options.using.call( elem, props );
 
 		} else {
+			// 更新 top/left 值
 			curElem.css( props );
 		}
 	}
@@ -16719,7 +16795,7 @@ jQuery.offset = {
 
 
 jQuery.fn.extend({
-
+	// 返回的是相对于最近的定位祖先元素的坐标（原点是定位祖先元素的左上角）
 	position: function() {
 		if ( !this[ 0 ] ) {
 			return;
@@ -16732,23 +16808,44 @@ jQuery.fn.extend({
 		// Fixed elements are offset from window (parentOffset = {top:0, left: 0}, because it is it's only offset parent
 		if ( jQuery.css( elem, "position" ) === "fixed" ) {
 			// We assume that getBoundingClientRect is available when computed position is fixed
+			/*
+			getBoundingClientRect 方法返回元素的大小及其相对于视口的位置
+			eg:
+			div = $('div')[0];
+			div.getBoundingClientRect()
+			-> { top: 287.625, right: 308, bottom: 387.625, left: 8 ,height: 100, width: 300 }
+			
+			ie6/ie7/ie8 等不支持 fixed 定位，如果当前浏览器支持 fixed 定位，那就认为 getBoundingClientRect 方法也是可用的
+			*/
 			offset = elem.getBoundingClientRect();
 
 		} else {
 			// Get *real* offsetParent
+			// this.offsetParent() 返回一个数组，分别对应 this 中每个元素的定位父元素
 			offsetParent = this.offsetParent();
 
 			// Get correct offsets
+			// 获取相对于页面原点的坐标
 			offset = this.offset();
+
+			// 如果父元素不是 html 元素，那就获取父元素相对于页面原点的坐标
 			if ( !jQuery.nodeName( offsetParent[ 0 ], "html" ) ) {
 				parentOffset = offsetParent.offset();
 			}
-
+			
+			// jQuery.css() 方法第三个参数为 true 表示获取值转为数值形式
 			// Add offsetParent borders
 			parentOffset.top += jQuery.css( offsetParent[ 0 ], "borderTopWidth", true );
 			parentOffset.left += jQuery.css( offsetParent[ 0 ], "borderLeftWidth", true );
 		}
+		
+		/*
+		以 left 值为例，值为当前元素到定位祖先元素左上角的水平位移
 
+		left = 当前元素离页面原点水平位移 - 父元素离页面原点水平位移 - 父元素的左边框宽度 - 当前元素自身的左外边距
+
+		其实，就是当前元素左外边距到父元素左边框的距离
+		*/
 		// Subtract parent offsets and element margins
 		return {
 			top: offset.top - parentOffset.top - jQuery.css( elem, "marginTop", true ),
@@ -16756,26 +16853,81 @@ jQuery.fn.extend({
 		};
 	},
 
+	// 返回最近的定位祖先元素
 	offsetParent: function() {
 		return this.map(function() {
+			/*
+			整个源码最开始部分，有定义 var docElem = document.documentElement
+
+			HTMLElement.offsetParent 是一个只读属性，返回一个指向最近的包含该元素的定位元素。
+			如果没有定位的元素，则 offsetParent 为最近的 table, table cell 或根元素（标准模式下为 html；quirks 模式下为 body）。
+			当元素的 style.display 设置为 "none" 时，offsetParent 返回 null。offsetParent 很有用，因为 offsetTop 和 offsetLeft 都是相对于其内边距边界的。
+			*/
 			var offsetParent = this.offsetParent || docElem;
 
+			// 遇到 position 为 static 的元素，比如 table 等，继续找
 			while ( offsetParent && ( !jQuery.nodeName( offsetParent, "html" ) && jQuery.css( offsetParent, "position") === "static" ) ) {
 				offsetParent = offsetParent.offsetParent;
 			}
-
+			
+			// 返回的元素肯定定位元素（relative|absolute|fixed），实在找不到就是 html 元素
 			return offsetParent || docElem;
 		});
 	}
 });
 
+/*
+这里生成 jQuery.fn.scrollLeft 和 jQuery.fn.scrollTop 方法
 
+jQuery.fn.scrollLeft ：设置或返回当前匹配元素相对于水平滚动条左侧的偏移
+jQuery.fn.scrollTop ：设置或返回当前匹配元素相对于垂直滚动条顶部的偏移
+*/
 // Create scrollLeft and scrollTop methods
 jQuery.each( {scrollLeft: "pageXOffset", scrollTop: "pageYOffset"}, function( method, prop ) {
 	var top = "pageYOffset" === prop;
+	
+	/*
+	① 不传参数，val === undefined，arguments.length === 0，获取值
+	   fn( this[0], method )
+	   -> return win ? win[ prop ] : elem[ method ]
 
+	   也就是说 
+	   a. 对于 window 或 document 元素有：
+	   window.scrollTop -> window.pageYOffset
+	   document.scrollTop -> window.pageYOffset
+
+	   b. 普通元素：
+	   div1 = document.getElementById('div1')
+	   $(div1).scrollTop() -> div.scrollTop
+
+	② 传参数，val !== undefined，arguments.length === 1，设置值
+	   假定 val 就是普通数字，不是函数，
+	   循环执行：fn( this[i], method, value );
+	   a. 对于 window 或 document 元素有：
+		  win.scrollTo(
+			!top ? val : window.pageXOffset,
+			top ? val : window.pageYOffset
+		   );
+
+		   如果 top 为 true，表示改变 y 方向的位移，x 方向不变，也就是：
+		   win.scrollTo( window.pageXOffset , val );
+		   
+		   如果 top 为 false，表示改变 x 方向的位移，y 方向不变，也就是：  
+		   win.scrollTo( val , window.pageXOffset );
+
+	   b. 普通元素：
+	   div.scrollTop = val  
+	*/
 	jQuery.fn[ method ] = function( val ) {
 		return jQuery.access( this, function( elem, method, val ) {
+			/*
+			这里的 elem 为原生 dom 元素
+			
+			对于 getWindow( elem ) ：
+			① elem 是 window，那就返回 window
+			② elem 是 document，也返回 window
+			③ 其他情况，返回 false
+			*/
 			var win = getWindow( elem );
 
 			if ( val === undefined ) {
@@ -16783,32 +16935,130 @@ jQuery.each( {scrollLeft: "pageXOffset", scrollTop: "pageYOffset"}, function( me
 			}
 
 			if ( win ) {
+				/*
+				① top 为 true，改变 y 方向位移，x 方向不变；
+				② top 为 false，改变 x 方向位移，y 方向不变；
+				*/
 				win.scrollTo(
 					!top ? val : window.pageXOffset,
 					top ? val : window.pageYOffset
 				);
 
 			} else {
+				// eg: div.scrollTop = val 
 				elem[ method ] = val;
 			}
 		}, method, val, arguments.length, null );
 	};
 });
 
+/*
+① elem 是 window，那就返回 window
+② elem 是 document，也返回 window
+③ elem 是其他普通元素，返回 false
+*/
 function getWindow( elem ) {
+	// elem.nodeType === 9 说明是 document，document.defaultView === window -> true
 	return jQuery.isWindow( elem ) ? elem : elem.nodeType === 9 && elem.defaultView;
 }
+
+
 // Create innerHeight, innerWidth, height, width, outerHeight and outerWidth methods
 jQuery.each( { Height: "height", Width: "width" }, function( name, type ) {
 	jQuery.each( { padding: "inner" + name, content: type, "": "outer" + name }, function( defaultExtra, funcName ) {
+
+		// funcName 分别为："innerHeight"/"innerwidth"、"height"/"width"、"outerHeight"/"outerwidth"
+		/*
+		(1) 以 innerHeight 方法为例（type 为 "height"）：
+		    ① 无参数 jQuery.fn.innerHeight()
+			chainable 为 0，type 为 "height"
+			
+			-> jQuery.access( this, fn, "height", undefined, 0, null );
+			-> fn( this[0], "height" )
+			-> a. this[0] 是 window ，返回 window.document.documentElement.clientHeight
+			      也就是说，$(window).innerHeight() -> window.document.documentElement.clientHeight
+			   b. this[0] 是 document（document.nodeType === 9），返回：
+				  Math.max(
+						document.body.scrollHeight, html.scrollHeight,
+						document.body.offsetHeight, html.offsetHeight,
+						html.clientHeight
+				  );
+			   c. jQuery.css( this[0], "height", "padding" )
+		   ② 有参数，jQuery.fn.innerHeight(v1,v2)
+		     （假定 v1 就是普通值，不是函数）
+			  chainable 为 "padding"，type 为 "height"
+
+			  -> jQuery.access( this, fn, "height", v1 , "padding", null );
+			     到这里可以看到，即便传了 2 个参数 v1、v2，也会忽略第二个参数
+			  -> 循环执行：fn( this[i], "height", v1 );
+			  -> a. 同上
+				 b. 同上
+			     c. jQuery.style( this[i], "height", v1 , "padding" );
+
+		(2) 以 outerHeight 方法为例（type 为 "height"）：
+			① 无参数 jQuery.fn.outerHeight()
+			chainable 为 0，type 为 "height"
+
+			-> jQuery.access( this, fn, "height", undefined, 0, null );
+			-> fn( this[0], "height" )
+			-> a. 同上
+			   b. 同上
+			   c. jQuery.css( this[0], "height", "border" )
+			② 有参数 jQuery.fn.outerHeight(true, v2)
+			   chainable 为 false，type 为 "height"
+
+		   -> jQuery.access( this, fn, "height", undefined, 0, null );
+		   -> fn( this[0], "height" )
+		   -> a. 同上
+			  b. 同上
+			  c. jQuery.css( this[0], "height", "margin" )
+
+			③ 有参数 jQuery.fn.outerHeight(v1, v2)
+			 （假定 v1 就是普通值，不是函数）
+			   chainable 为 true，type 为 "height"
+
+		   -> jQuery.access( this, fn, "height", v1 , true, null );
+		   -> 循环执行：fn( this[i], "height", v1 );
+		   -> a. 同上
+			  b. 同上
+			  c. jQuery.style( this[i], "height", v1, "border"); 
+		*/
 		// margin is only for outerHeight, outerWidth
 		jQuery.fn[ funcName ] = function( margin, value ) {
+				/*
+				① 参数个数大于 0，defaultExtra 为 "padding"|"content"，chainable 为 "padding"|"content"
+				   对应 "innerHeight"/"innerwidth"、"height"/"width" 等 4 个方法
+				② 参数个数大于 0，defaultExtra 为 ""，margin 不是布尔值，chainable 为 true
+				   对应 "outerHeight"/"outerwidth" 等 2 个方法
+				③ 无参数，chainable 为 0
+
+				总结：
+				a. 对于 "innerHeight"/"innerwidth"、"height"/"width" 等 4 个方法
+				   只要参数个数大于 0，chainable 就是设置真，表示设置
+				b. 对于 "outerHeight"/"outerwidth" 等 2 个方法
+				   不光要参数大于 0，第一个参数还不能是布尔值，才表示设置
+				*/
 			var chainable = arguments.length && ( defaultExtra || typeof margin !== "boolean" ),
+				/*
+				① defaultExtra 为 "padding"|"content" 时，extra 也为 "padding"|"content"
+				   对应 "innerHeight"/"innerwidth"、"height"/"width" 等 4 个方法
+				② defaultExtra 为 "" 时：
+				   对应 "outerHeight"/"outerwidth" 等 2 个方法
+
+				   如果 margin === true || value === true，extra 为 "margin"；
+				   否则 extra 为 "border"
+
+				总结：
+				a. 对于 "innerHeight"/"innerwidth" 方法 extra 为 "padding"
+				b. 对于 "height"/"width" 方法，extra 为 "content"
+				c. 对于 "outerHeight"/"outerwidth" 方法，extra 为 "margin" 或 "border" 
+				*/
 				extra = defaultExtra || ( margin === true || value === true ? "margin" : "border" );
 
 			return jQuery.access( this, function( elem, type, value ) {
 				var doc;
 
+				// 注意这里是 isWindow 不是 getWindow ，别看错了
 				if ( jQuery.isWindow( elem ) ) {
 					// As of 5/8/2012 this will yield incorrect results for Mobile Safari, but there
 					// isn't a whole lot we can do. See pull request at this URL for discussion:
