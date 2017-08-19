@@ -67,20 +67,19 @@
     })(window);
 
     这种写法有几点好处（更具体的分析可查看：http://nanchao.win/2017/07/03/argument-undefined/）：
-    ① 一般情况下，除了引入 jQuery 代码，项目中还会有其他的 js 代码。
-       这里将 jQuery 的所有代码由这个匿名函数包裹起来，那么这里定义的任何变量都是局部的，不会对全局变量造成污染。
-    ② 将 windows 作为实参和实参，不光可以提高 window 下属性的遍历效率，
-       另外，在代码压缩后，匿名函数里的所有 window 标识符都可以简化为一个字母。
+    ① 一般情况下，项目中除了引入 jQuery 代码，还会有其他的 js 代码。
+       这里将 jQuery 的所有代码由这个匿名函数包裹起来，那么这里定义的任何变量都是局部的，不会和其他的 js 代码互相干扰。
+    ② 将 windows 作为形参和实参，是因为 window 对象处于作用域链的最顶端，所以 window 下属性查找速度会比较慢，这样做可以提高 window 下属性的遍历效率，
+       另外，将 window 作为形参，那么在代码压缩过程中，匿名函数里的所有 window 标识符都可以简化为一个字母，压缩效率高。
     ③ 将 undefined 做为形参可以规避 ECMAScript3 中 undefined 可以被改写的问题。
        早期的 ECMAScript3 中，undefined 是可读可写的变量，后来的 ECMAScript5 中才修正为只读变量。
-       undefined 作为关键字，如果被修改会引起很多意想不到的麻烦。
+       而 undefined 作为有特殊含义的关键字，如果被修改会引起很多意想不到的麻烦。
 
-       那么为什么这么写可以起到规避 undefined 可以被改写的事实：
+       这么写为什么可以规避 undefined 被改写的问题？下面从正反两方面回答这个问题：
 
-       a. 假如不要形参 undefined，那么依据作用域链的原理，匿名函数中的 undefined 就会取全局中的 undefined，
-          一旦全局中的 undefined 被修改了，那么取到的就是被修改后的值，这不是我们希望的；
-       b. 假如像上面那样将 undefined 作为形参，而不传入实参。在 js 中被省略的参数值为 undefined（货真价实的 undefined），
-          匿名函数执行时，实参 undefined 会复制给形参 undefined，所以，函数内部的 undefined 就会优先查找这个实参 undefined，而不是全局的可能被修改的 undefined。
+       a. 假如不要形参 undefined，依据作用域链的原理，匿名函数中的 undefined 就会取全局的 undefined，而全局中的 undefined 是可能被修改的，所以这样是不好的。
+       b. 假如像上面那样将 undefined 作为形参，省略对应的实参。我们知道，在 js 中函数被省略的实参默认是 undefined（货真价实的 undefined），
+          那么，以上匿名函数执行时，这个货真价实的 undefined 就会复制给形参 undefined，所以，函数内部的 undefined 自然都是货真价实的 undefined 了。
 
 (2) 伪构造函数 jQuery
 
@@ -412,6 +411,15 @@ var
 
 	// Support: IE9
 	// For `typeof xmlNode.method` instead of `xmlNode.method !== undefined`
+    /*
+    首先，typeof undefined === "undefined"，是一个字符串
+
+    一般情况下，判断一个变量是不是 undefined，以下两种方式都可以：
+    ① typeof window.v ===  "undefined"
+    ② window.v === undefined
+
+    但是，在一些老版本 ie 下，方式 ② 对于 xml 的节点方法判断不准确，所以推荐统一用方式 ①
+     */ 
 	core_strundefined = typeof undefined,
 
 	// Use the correct document accordingly with window argument (sandbox)
@@ -420,85 +428,134 @@ var
 	docElem = document.documentElement,
 
 	// Map over jQuery in case of overwrite
+    // 因为后面会覆盖这个全局变量 window.jQuery，所以保存下引入 jQuery 库之前的全局 jQuery 变量，以便后面可以还原这个变量
 	_jQuery = window.jQuery,
 
 	// Map over the $ in case of overwrite
+    // 同上，因为后面会覆盖这个全局变量 window.$，所以保存下引入 jQuery 库之前的全局 $ 变量，以便后面可以还原这个变量
 	_$ = window.$,
 
 	// [[Class]] -> type pairs
 	class2type = {},
 
 	// List of deleted data cache ids, so we can reuse them
-    // 在之前的版本中，这个变量会和数据缓存id有关，
-    // 这个版本中仅仅当做一个数组字面量，下面会根据这个数组取数组的方法
+    // 在之前的版本中，这个变量会和数据缓存id有关，这个版本中仅仅当做一个数组字面量
 	core_deletedIds = [],
 
 	core_version = "2.0.3",
 
 	// Save a reference to some core methods
+    // 连接两个或多个数组
 	core_concat = core_deletedIds.concat,
+    // 向数组的末尾添加一个或更多元素，并返回新的长度。
 	core_push = core_deletedIds.push,
+    // 从某个已有的数组返回选定的元素
 	core_slice = core_deletedIds.slice,
+    // 返回在数组中给定元素的索引,如果不存在返回 -1
 	core_indexOf = core_deletedIds.indexOf,
+    // 返回对象的类型字符串
 	core_toString = class2type.toString,
+    // 方法会返回一个布尔值，指示对象是否具有指定的属性作为自身(不继承)属性。
 	core_hasOwn = class2type.hasOwnProperty,
-    // 高级浏览器会定义了这个方法，低级浏览器返回 undefined
+    // 去掉字符串前后空格
 	core_trim = core_version.trim,
 
 	// Define a local copy of jQuery
+    /*
+    这就是贯穿整个源码的 jQuery 函数（函数也是对象），它充当构造函数的作用，其实也可以说是一个伪构造函数。
+
+    下面会把很多工具方法挂载到这个函数（对象）上，比如：
+    jQuery.extend({
+        // functions here
+    });
+
+    也会把很多实例方法挂载到这个函数（对象）上，比如：
+    jQuery.fn.extend({
+        // functions here
+    });
+
+    对于以下两种方式调用 jQuery 函数：
+    ① jQuery(selector, context) 返回值是 new jQuery.fn.init( selector, context, rootjQuery )
+    ② new jQuery(selector, context) 返回值依然是 new jQuery.fn.init( selector, context, rootjQuery )
+       这是因为 js 语法规定，当函数返回值是一个对象时，用 new 运算符执行这个函数返回值就是那个对象。
+
+    所以，我们看到，执行 jQuery 函数最后实际上都是在执行函数 jQuery.fn.init，这才算是真正的构造函数。
+     */ 
 	jQuery = function( selector, context ) {
 		// The jQuery object is actually just the init constructor 'enhanced'
 		return new jQuery.fn.init( selector, context, rootjQuery );
 	},
 
-	// Used for matching numbers
-    // source 方法获取正则表达式源文本，这里返回 "[+-]?(?:\d*\.|)\d+(?:[eE][+-]?\d+|)" ，类型为 "string"
-    // 匹配数字，包括正负号、科学计数法、.开头等多种情况的数字
+    // Used for matching numbers
+    /*
+    source 方法获取正则表达式源文本，这里返回 "[+-]?(?:\d*\.|)\d+(?:[eE][+-]?\d+|)" ，类型为 "string"
+    匹配数字，包括正负号、科学计数法、.开头等多种情况的数字
+     */
 	core_pnum = /[+-]?(?:\d*\.|)\d+(?:[eE][+-]?\d+|)/.source,
 
-
-    // jQuery 中变量命名有个规律
-    // 正则变量名最前面是'r'，函数名最前面是'f'
-
 	// Used for splitting on whitespace
-    // 匹配任意不是空白的字符
+    /*
+    jQuery 中变量命名有个规律：正则变量名最前面是'r'，函数名最前面是'f'
+    匹配任意不是空白的字符
+     */
 	core_rnotwhite = /\S+/g,
 
 	// A simple way to check for HTML strings
 	// Prioritize #id over <tag> to avoid XSS via location.hash (#9521)
 	// Strict HTML recognition (#11290: must start with <)
+    /*
+    拆开两部分 
+    ① (?:\s*(<[\w\W]+>)[^>]* 开头，如：' <div>abc</div>'
+    ② #([\w-]*)) 结尾，如：'#btn'
 
-    // 拆开两部分 
-    // (?:\s*(<[\w\W]+>)[^>]* 开头，如：' <div id=top></div>'
-    // #([\w-]*)) 结尾，如：'#btn'
+    这个正则的作用就是匹配 html 字符串以及 # 开头的字符串    
+     */
 	rquickExpr = /^(?:\s*(<[\w\W]+>)[^>]*|#([\w-]*))$/,
 
 	// Match a standalone tag
-    // \1代表第一个()捕获的内容
-    // 空标签没有内容可以通过，如：
-    // '<div ></div>' 得到  ["<div ></div>", "div", index: 0, input: "<div ></div>"]
-    // '<div/>' 得到  ["<div/>", "div", index: 0, input: "<div/>"]
-    // 带有属性或者有子节点的字符串，不会通过正则匹配，返回null
-    // 如 '<div id="d"></div>'、'<div>text</div>'都匹配不成功
+    /*
+    其中 \1代表第一个()捕获的内容，这个正则的作用是匹配空标签字符串，比如：
+
+    rsingleTag.exec('<div ></div>')
+    -> ["<div ></div>", "div", index: 0, input: "<div ></div>"]
+    
+    rsingleTag.exec('<br />')
+    -> ["<br />", "br", index: 0, input: "<br />"]
+
+    带有属性或者有子节点的字符串，不会通过正则匹配，返回 null
+
+    rsingleTag.exec('<div id="d"></div>')
+    -> null
+
+    rsingleTag.exec('<div>text</div>')
+    -> null
+     */ 
 	rsingleTag = /^<(\w+)\s*\/?>(?:<\/\1>|)$/,
 
 	// Matches dashed string for camelizing
-    // css 中属性在js中需要转驼峰，会用到这两个正则
-    // 如 border-left 转成 borderLeft
-    // 对于前缀 -ms- -o- -webkit 等，只有 -ms-比较特殊
-    // -o-border-radius 转成 oBorderRadius
-    // 但是 -ms- 转化后首字母 M 大写，MsBorderRadius
-    // 另外，对于数字，css3 中 -2d 转成 2d，不要中划线（-3d -> 3d）
+    /*
+    css 中属性在 js 中需要转驼峰后才可以识别，会用到这两个正则
+
+    比如：border-left -> borderLeft，就需要用 rdashAlpha 把 -l 匹配出来，转出 L
+
+    css 中的前缀有很多种，比如 -ms- -o- -webkit 等，
+    -o-border-radius -> oBorderRadius
+    -webkit-border-radius -> webkitBorderRadius
+    -ms-border-radius -> MsBorderRadius
+
+    可以看到，前缀 -ms- 是比较特殊的，转化后第一个字母 M 大写。所以这里要单独把 -ms- 开头的属性匹配出来
+     */ 
 	rmsPrefix = /^-ms-/,
 	rdashAlpha = /-([\da-z])/gi,
 
 	// Used by jQuery.camelCase as callback to replace()
+    // 返回第二个参数的大写形式，如 fcamelCase(null,'abc') -> 'ABC'
 	fcamelCase = function( all, letter ) {
 		return letter.toUpperCase();
 	},
 
 	// The ready event handler and self cleanup method
-    // 页面加载完毕，执行 ready 函数队列，并取消加载监听
+    // 页面加载完毕，调用这个函数，执行 ready 函数队列，并取消 DOMContentLoaded、load 等两个事件的监听
 	completed = function() {
 		document.removeEventListener( "DOMContentLoaded", completed, false );
 		window.removeEventListener( "load", completed, false );
