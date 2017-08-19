@@ -15,7 +15,7 @@
 源码总共 8829 行（包括作者的注释），按行进行分解，总体框架如下：
 注：
 ① 这里参考 [妙味课堂-逐行分析jQuery源码的奥妙]
-② 这里的行数都是针对 2.0.3 版本源码的，不是我们自己修改过的当前文件
+② 这里的行数都是和 2.0.3 版本源码对应的， 而不是当前文件
 
 (function( window, undefined ) {
 
@@ -509,10 +509,8 @@ jQuery.fn = jQuery.prototype = {
 	// The current version of jQuery being used
 	jquery: core_version,
 
-    // 重新指向 jQuery
+    // 指向 jQuery
 	constructor: jQuery,
-
-
 
     /*
     selector：选择器
@@ -17320,6 +17318,7 @@ if ( typeof module === "object" && module && typeof module.exports === "object" 
 
 // If there is a window object, that at least has a document property,
 // define jQuery and $ identifiers
+// 如果是浏览器环境，将 jQuery 和 $ 挂载到全局对象 window 下
 if ( typeof window === "object" && typeof window.document === "object" ) {
 	window.jQuery = window.$ = jQuery;
 }
