@@ -514,13 +514,16 @@ var
 
 	// Match a standalone tag
     /*
-    其中 \1代表第一个()捕获的内容，这个正则的作用是匹配空标签字符串，比如：
+    其中 \1 代表第一个 () 捕获的内容，这个正则的作用是匹配空标签字符串，比如：
 
     rsingleTag.exec('<div ></div>')
     -> ["<div ></div>", "div", index: 0, input: "<div ></div>"]
     
     rsingleTag.exec('<br />')
     -> ["<br />", "br", index: 0, input: "<br />"]
+
+    rquickExpr.exec('#btn')
+    -> ["#btn", undefined, "btn", index: 0, input: "#btn"]
 
     带有属性或者有子节点的字符串，不会通过正则匹配，返回 null
 
@@ -564,16 +567,49 @@ var
 
 jQuery.fn = jQuery.prototype = {
 	// The current version of jQuery being used
+    // 当前 jQuery 库版本 "2.0.3"
 	jquery: core_version,
 
-    // 指向 jQuery
+    /*
+    注意看这里的写法：
+    jQuery.fn = jQuery.prototype = {
+        // props here
+    }
+    这里把 jQuery.prototype 指向了一个新的对象，这个新的对象的 constructor 属性显然不是指向 jQuery
+    所以，这里强制将 constructor 属性指向 jQuery
+
+    举个例子验证一下：
+
+    方式一：
+    function A(){}
+    A.prototype = {};
+
+    var a = new A();
+
+    // a 是 A 的实例，但是 constructor 属性不是指向 A，怪怪的
+    a instanceof A -> true
+    a.constructor === A -> false
+
+    方式二：
+    function A(){}
+    A.prototype = {
+        constructor : A
+    };
+
+    var a = new A();
+
+    // 这样就比较和谐了
+    a instanceof A -> true
+    a.constructor === A -> true
+     */
 	constructor: jQuery,
 
     /*
     selector：选择器
     context：选择范围
     rootjQuery：$(document)
-    参数可能为：
+
+    (1) 第一个参数 selector 可能为：
     $(null), $(""), $(undefined), $(false)
     $('#id'), $('div'), $('.cls'), $('div + p span > a[title="hi"]')
     $('<li>'), $('<li>1</li><li>2</li>'), $("<iframe frameborder='0' width='0' height='0'/>")
@@ -581,9 +617,10 @@ jQuery.fn = jQuery.prototype = {
     $(function(){})
     $([]), $({})
 
+    (2) 第二个参数 context 为选择范围，比如 $('li','ul') 表示选取 ul 元素内的 li 元素
+
     所有选择器形式参考：
     http://www.w3school.com.cn/jquery/jquery_ref_selectors.asp
-
     */
 	init: function( selector, context, rootjQuery ) {
 		var match, elem;
@@ -605,99 +642,158 @@ jQuery.fn = jQuery.prototype = {
 				// 如 match = [null,'<p>',null]
                 match = [ null, selector, null ];
 			} else {
+                /*
+                rquickExpr = /^(?:\s*(<[\w\W]+>)[^>]*|#([\w-]*))$/
+
+                上面已经分析过了，有两种形式字符串可以通过这个正则的匹配：
+                ① rsingleTag.exec('<div ></div>')
+                   -> ["<div ></div>", "div", index: 0, input: "<div ></div>"]
+    
+                ② rquickExpr.exec('#btn')
+                   -> ["#btn", undefined, "btn", index: 0, input: "#btn"]
+
+                而 ① 已经走了上面的 if 分支，所以，这里只剩下 '#btn' 这种形式字符串了
+                 */
 				match = rquickExpr.exec( selector );
-                // 剩下 $('#id'), $('div'), $('.cls'), $('div + p span > a[title="hi"]')
-                // 能通过匹配的只有 $('#id')
-                // match = ["#id", undefined, "id", index: 0, input: "#id"]
 			}
 
-            // 对于 rquickExpr = /^(?:\s*(<[\w\W]+>)[^>]*|#([\w-]*))$/
-            // (<[\w\W]+>) 对应 match[1]
-            // ([\w-]*) 对应 match[2]
-    
-            // 如果是dom字符串match[1]会取出完整的dom标签，例如：
-            // selector = ' <div id=top></div>'; 得到 match[1] === "<div id=top></div>"
-            // selector = ' <div id=top></div>dffdfd'; 得到 match[1] === "<div id=top></div>"
-            
-            // 如果是#id字符串，会match[2]会取出id，例如：
-            // selector = '#test';得到 match[2] === "test"
-
-
 			// Match html or make sure no context is specified for #id
-            // $('<li>'), $('<li>1</li><li>2</li>') 或 $('#id')
+            /*
+            match && (match[1] || !context) 为真进入下面的 if 代码块，有两种情况：
+
+            ① match && match[1]，对应： $('<div ></div>') 和 $('<div ></div>', context)
+            ② match && !context，对应：$('#btn')
+             */ 
 			if ( match && (match[1] || !context) ) {
 
 				// HANDLE: $(html) -> $(array)
-                // html 片段转成数组
-                // $('<li>'), $('<li>1</li><li>2</li>')
-                // 创建标签，第二个参数（context）可能是 document（可以省略不写），也可能是 contentDocument（iframe 文档）
+                // $('<div ></div>') 和 $('<div ></div>', context) 这种形式
 				if ( match[1] ) {
-                    // $('<a>',document),$('<a>',$(document))
-                    // $(document) -> [document, context: document] -> $(document)[0] === document
-					// 若 context 不是原生节点，取出其中的原生节点 
+                    /*
+                    context 可以是两种形式，比如：
+                    ① $('<div ></div>',document)     context 是原生对象
+                    ② $('<div ></div>',$(document))  context 是 jQuery 对象，$(document)[0] === document
+
+                    下面这句代码作用是：如果是 jQuery 对象，就取其对应的原生对象
+                     */ 
                     context = context instanceof jQuery ? context[0] : context;
 
-					// scripts is true for back-compat
-                    // 对于HTML来说，documentElement是<html>标签对应的Element对象，
-                    // ownerDocument是document对象
-                    // jQuery.merge(first, second) 合并第二个参数内容到第一个参数
-                    // 不光可以合并数组，如果第一个参数是特殊的对象（具有length属性，并且索引是数字），也是可以的
-                    // 如果第一个参数是数组，合并后就是数组；如果第一个参数是对象，合并后就是对象
-					// $.merge(['a','b'],['c','d']) -> ["a", "b", "c", "d"]
-                    // $.merge({0:'a',length:1},['c','d']) -> {0: "a", 1: "c", 2: "d", length: 3}
+                    /*
+                    这里简要说明一下两个函数的用法：
+                    (1) jQuery.merge( first, second )
+                        将 second 的属性依次复制给 first，然后然后 first
 
+                    eg:
+                    $.merge(['a','b'],['c','d']) -> ["a", "b", "c", "d"]
+                    $.merge({0:'a',length:1},['c','d']) -> {0: "a", 1: "c", 2: "d", length: 3}
+
+                    (2) jQuery.parseHTML(data, context, keepScripts)
+                        将字符串 data 转换成一组 dom 元素组成的数组
                     
-                    // jQuery.parseHTML(data, context, keepScripts) 将data字符串
-                    // 转换为一组 dom 元素组成的数组，可以插入文档中，例如：
-                    // $.parseHTML("hello, <b>my name is</b> jQuery.") 得到 [text, b, text]
-                    // $.parseHTML("<a>link</a><b>my name is</b> jQuery.") 得到 [a, b, text]
+                    eg:
+                    $.parseHTML("<div>新建div标签</div>") -> [div]
+                    $.parseHTML("<a>link</a><b>my name is</b> jQuery.") -> [a, b, text]
+
+                    返回数组里的 div、a、b、text 都是指 dom 节点
+
+                    综合 (1)、(2)，可以知道下面这句的作用是，根据 selector 字符串，创建相应的 dom 节点，
+                    然后将这些 dom 节点依次挂载到 this 对象下（意思就是 this 对象可以引用这些节点）
+                     */
                     jQuery.merge( this, jQuery.parseHTML(
 						match[1],
-                        // 默认情况下 ownerDocument 就是 document，也可能是 iframe 的 contentDocument 或 xml 等等
+                        /*
+                        根据运算符优先级，相当于：
+                        (context && context.nodeType) ? (context.ownerDocument || context) : document
+
+                        默认情况下 ownerDocument 就是 document，也可能是 iframe 的 contentDocument，所以：
+                        ① 如果 context 不存在，那么，就取 document
+                        ② 如果 context 存在，优先取 context.ownerDocument
+                         */
 						context && context.nodeType ? context.ownerDocument || context : document,
                         // true 表示保留脚本标签
 						true
 					) );
 
 					// HANDLE: $(html, props)
+        
+                    /*
+                    解释一下判断条件：
+                    (1) rsingleTag.test( match[1] ) 表示 selector 是 "<div></div>" 这种形式的单标签
+                    rsingleTag = /^<(\w+)\s*\/?>(?:<\/\1>|)$/ 匹配单个空标签
 
-                    // \1代表第一个()捕获的内容
-                    // 空标签没有内容可以通过，如：
-                    // '<div ></div>' 得到  ["<div ></div>", "div", index: 0, input: "<div ></div>"]
-                    // '<div/>' 得到  ["<div/>", "div", index: 0, input: "<div/>"]
-                    // 带有属性或者有子节点的字符串，不会通过正则匹配，返回null
-                    // 如 '<div id="d"></div>'、'<div>text</div>'都匹配不成功
-                    // rsingleTag = /^<(\w+)\s*\/?>(?:<\/\1>|)$/
+                    单个标签没内容可以通过匹配
+                    rsingleTag.test('<div ></div>') -> true
+                    rsingleTag.test('<input />') -> true
                     
-                    // 如果是单个空标签，并且第二个参数是对象，不光创建标签，还给标签添加属性
-                    // 如 $('<li>',{title:'hello',html:'world'})
+                    带有属性或者有子节点的标签，不会通过正则匹配，返回 null
+                    rsingleTag.test('<div id="d"></div>') -> false
+                    rsingleTag.test('<div>text</div>') -> false
+
+                
+                    (2) jQuery.isPlainObject( context ) 表示 context 是普通的对象
+                    dom 节点，window 对象返回 false，其他 true
+
+                    jQuery.isPlainObject(window) -> false
+                    jQuery.isPlainObject(document) -> false
+                    jQuery.isPlainObject({a : 1}) -> true
+
+                    也就是说，第一个参数是单个空标签，第二个参数是字面量对象（标签的各种属性），会执行以下 if 代码块：
+                    $( "<div></div>", {
+                      "class" : "my-div",
+                      "id" : "div1"
+                    })
+
+                    作用是：创建一个新的 div 元素，然后这个 div 的 class 设为 "my-div"，id 设为 "div1"
+                     */ 
 					if ( rsingleTag.test( match[1] ) && jQuery.isPlainObject( context ) ) {
+                        // 遍历 context 中的属性，依次添加给新创建的 dom 元素
 						for ( match in context ) {
 							// Properties of context are called as methods if possible
-                            // 例如属性 html 就是一个函数
-							if ( jQuery.isFunction( this[ match ] ) ) {
-                                // this[html]('world')
-								this[ match ]( context[ match ] );
+                            /*
+                            举个例子：
+                            $( "<div></div>", {
+                              "class": "my-div",
+                              on: {
+                                touchstart: function( event ) {
+                                  // Do something
+                                }
+                              }
+                            })
 
+                            这里的 on 是一个函数，那就调用这个 on 函数：
+
+                            相当于：
+                            $("<div></div>").on({
+                                touchstart: function( event ) {
+                                  // Do something
+                                }
+                            })
+                             */
+							if ( jQuery.isFunction( this[ match ] ) ) {
+								this[ match ]( context[ match ] );
 							// ...and otherwise set as attributes
-                            // 普通属性，就添加属性
 							} else {
+                                // 前面说到新创建的 dom 元素会挂载到 this 对象下，执行 this.attr() 方法时，会遍历 this 下挂载的 dom 元素，依次给这些 dom 元素添加属性
 								this.attr( match, context[ match ] );
 							}
 						}
 					}
 
+                    // 到这里，$('<div ></div>') 和 $('<div ></div>', context) 这种形式处理完毕，返回 this 对象
 					return this;
 
 				// HANDLE: $(#id)
-                // $(#id)
+                // $('#id') 这种形式
 				} else {
+                    // 直接通过原生的 document.getElementById 方法获取到元素
 					elem = document.getElementById( match[2] );
 
 					// Check parentNode to catch when Blackberry 4.6 returns
 					// nodes that are no longer in the document #6963
-                    // 黑莓 4.6 下克隆节点，会出现节点不存在却还是可能通过document.getElementById找到
-                    // 双重判断可以避免这个问题
+                    /*
+                    黑莓 4.6 下克隆节点，会出现一个问题，有的节点已经不存在了，但是还是可以通过 document.getElementById 找到
+                    如果节点 elem 不存在，那么 elem.parentNode 肯定是不存在的，所以这里用双重判断规避以上问题
+                     */
 					if ( elem && elem.parentNode ) {
 						// Inject the element directly into the jQuery object
 						this.length = 1;
@@ -706,28 +802,51 @@ jQuery.fn = jQuery.prototype = {
 
 					this.context = document;
 					this.selector = selector;
+                    // $('#id') 这种形式处理完毕，返回 this
 					return this;
 				}
 
 			// HANDLE: $(expr, $(...))
-            // $('div'), $('.cls'), $('div + p span > a[title="hi"]') 等没有 context 情况
-            // 或者 context 是 jQ 对象 $('ul',$(document)) -> $(document).find('ul')
+            /*
+            ① !context 指的是排除上面分析过的两种，还有：
+            $('div'), $('.cls'), $('div + p span > a[title="hi"]') 等形式
+
+            ② context.jquery 为真，说明 context 是 jQuery 对象（ 上面有定义：jQuery.prototype.jquery = core_version ）
+            $( selector , $(selector1) ） 第二个参数 context 是一个 jQuery 对象这种形式
+
+            这两类情况，不是简单的就可以匹配出相应元素的，所以交给超级选择器引擎 Sizzle 去完成。后面会详细解释 Sizzle。
+             */
 			} else if ( !context || context.jquery ) {
-                // document.find( selector )
-                // $(document).find( selector )
-                // find 会调用 sizzle 这个超级选择器
+                /*
+                ① context 存在的时候，比如 $( selector , $(selector1) ），返回值为：
+                   $(selector1).find( selector )
+
+                ② 当选择器不存在的时候，比如 $( selector ），返回值为：
+                   $(document).find( selector )
+
+                这里的 find 方法就是运用 Sizzle 引擎来选择 dom 元素。
+                 */
 				return ( context || rootjQuery ).find( selector );
 
 			// HANDLE: $(expr, context)
 			// (which is just equivalent to: $(context).find(expr)
-            // $('ul',document) -> $(document).find('ul')
+            /*
+            find 方法是 jQuery 实例对象的方法，于是，当第二个参数 context 是 dom 原生对象的时候，那就将 context 转成 jQuery 对象，再调用 find 方法
+
+            this.constructor 就是 jQuery，也就是 $，所以：
+            $('ul',document) 实际上是执行 $(document).find('ul')
+             */ 
 			} else {
 				return this.constructor( context ).find( selector );
 			}
 
 		// HANDLE: $(DOMElement)
-        // $(document) 这种，参数是原生节点
-        // 节点肯定有 nodeType 属性
+        /*
+        $(document)、$(document.getElementsByTagName('div')[0]) 这种参数是原生节点的形式
+
+        首先，原生 dom 节点对象一定有 nodeType 属性
+        如果 selector 是原生 dom 节点，那就不用再去找 dom 节点了，直接把 selector 往 this 上添加就好了
+         */
 		} else if ( selector.nodeType ) {
 			this.context = this[0] = selector;
 			this.length = 1;
@@ -735,24 +854,45 @@ jQuery.fn = jQuery.prototype = {
 
 		// HANDLE: $(function)
 		// Shortcut for document ready
-        // $(function(){}) 等同于：
-        // $(document).ready(function(){})
+        /*
+        $(function(){
+            // code here
+        }) 这种形式：
+        selector 是函数，那就把这个函数加到队列里，等整个页面 dom 元素都加载完毕再执行这个方法
+
+        这种写法实质上是：$(document).ready(function(){
+            // code here
+        })
+
+        关于这个 $(document).ready() 方法，后面会分析
+         */
 		} else if ( jQuery.isFunction( selector ) ) {
 			return rootjQuery.ready( selector );
 		}
 
-        // $({selector:'div'}) -> [Object, selector: "div", context: undefined]
-        // Object 是 参数本身，后边是 this 。jQuery.makeArray( selector, this )
+        /*
+        首先说一下 jQuery.makeArray( arr, results ) 方法：
+        ① 如果 results 参数省略了，那么最终返回结果就是一个数组，返回数组的内容就是 arr 的元素
+        ② 如果 results 参数存在，那么最终返回结果就是 results（包含 arr 的元素）
+
+        eg:
+        jQuery.makeArray(['a','b'],{length:0}) -> {0: "a", 1: "b", length: 2}
+        jQuery.makeArray(['c','d'],['a','b']) -> ["a", "b", "c", "d"]
+
+        最后就剩下这一种情况了：
+        $({
+            selector : 'div1',
+            context : 'div2'
+        }) 
+        
+        给 this 添加 selector、context 等两个属性，然后将 selector 对象也挂载到 this 对象下
+         */
 		if ( selector.selector !== undefined ) {
 			this.selector = selector.selector;
 			this.context = selector.context;
 		}
         
-        // jQuery.makeArray(['a','b'],{length:0})  -> {0: "a", 1: "b", length: 2}
-        // jQuery.makeArray({length:0},['a','b']) -> ["a", "b"]
-        // jQuery.makeArray( {selector:'div'}, $()) -> [Object]
-        // 前边都各自 return 了，这里是剩下的情况
-        // jQuery.makeArray 有时会返回数组，有时会返回对象，视参数而定
+        // 其他情况都各自 return 了，这是返回最后一种情况
 		return jQuery.makeArray( selector, this );
 	},
 
