@@ -508,7 +508,20 @@ var
     ① (?:\s*(<[\w\W]+>)[^>]* 开头，如：' <div>abc</div>'
     ② #([\w-]*)) 结尾，如：'#btn'
 
-    这个正则的作用就是匹配 html 字符串以及 # 开头的字符串    
+    这个正则的作用就是匹配 html 字符串以及 # 开头的字符串，主要分 3 类 
+
+    ① 闭合标签
+    rquickExpr.exec('<div >abc</div>')
+    -> ["<div >abc</div>", "<div >abc</div>", undefined, index: 0, input: "<div >abc</div>"]
+
+    ② 非闭合标签
+    rquickExpr.exec('<div >hello')
+    -> ["<div >hello", "<div >", undefined, index: 0, input: "<div >hello"]
+
+    ③ #id
+    rquickExpr.exec('#btn')
+    -> ["#btn", undefined, "btn", index: 0, input: "#btn"]
+
      */
 	rquickExpr = /^(?:\s*(<[\w\W]+>)[^>]*|#([\w-]*))$/,
 
@@ -521,9 +534,6 @@ var
     
     rsingleTag.exec('<br />')
     -> ["<br />", "br", index: 0, input: "<br />"]
-
-    rquickExpr.exec('#btn')
-    -> ["#btn", undefined, "btn", index: 0, input: "#btn"]
 
     带有属性或者有子节点的字符串，不会通过正则匹配，返回 null
 
@@ -630,8 +640,10 @@ jQuery.fn = jQuery.prototype = {
 			return this;
 		}
 
-		// Handle HTML strings，选择符是字符串
+		// Handle HTML strings
         /*
+        选择符 selector 是字符串
+
         $('#id'), $('div'), $('.cls'), $('div + p span > a[title="hi"]')
         $('<li>'), $('<li>1</li><li>2</li>')
         */
@@ -645,14 +657,17 @@ jQuery.fn = jQuery.prototype = {
                 /*
                 rquickExpr = /^(?:\s*(<[\w\W]+>)[^>]*|#([\w-]*))$/
 
-                上面已经分析过了，有两种形式字符串可以通过这个正则的匹配：
-                ① rsingleTag.exec('<div ></div>')
-                   -> ["<div ></div>", "div", index: 0, input: "<div ></div>"]
+                上面已经分析过了，有 3 种形式字符串可以通过这个正则的匹配：
+                ① rquickExpr.exec('<div >abc</div>')
+                   -> ["<div >abc</div>", "<div >abc</div>", undefined, index: 0, input: "<div >abc</div>"]
+
+                ② rquickExpr.exec('<div >hello')
+                   -> ["<div >hello", "<div >", undefined, index: 0, input: "<div >hello"]
     
-                ② rquickExpr.exec('#btn')
+                ③ rquickExpr.exec('#btn')
                    -> ["#btn", undefined, "btn", index: 0, input: "#btn"]
 
-                而 ① 已经走了上面的 if 分支，所以，这里只剩下 '#btn' 这种形式字符串了
+                而 ① 已经走了上面的 if 分支，所以，这里只剩下 '<div >hello'、'#btn' 这种形式字符串了
                  */
 				match = rquickExpr.exec( selector );
 			}
@@ -661,13 +676,13 @@ jQuery.fn = jQuery.prototype = {
             /*
             match && (match[1] || !context) 为真进入下面的 if 代码块，有两种情况：
 
-            ① match && match[1]，对应： $('<div ></div>') 和 $('<div ></div>', context)
+            ① match && match[1]，对应： $('<div ></div>') 、$('<div >hello')、 $('<div ></div>', context) 等形式
             ② match && !context，对应：$('#btn')
              */ 
 			if ( match && (match[1] || !context) ) {
 
 				// HANDLE: $(html) -> $(array)
-                // $('<div ></div>') 和 $('<div ></div>', context) 这种形式
+                // $('<div >abc</div>') 、$('<div >hello') 、$('<div ></div>', context) 这种形式
 				if ( match[1] ) {
                     /*
                     context 可以是两种形式，比如：
@@ -681,7 +696,7 @@ jQuery.fn = jQuery.prototype = {
                     /*
                     这里简要说明一下两个函数的用法：
                     (1) jQuery.merge( first, second )
-                        将 second 的属性依次复制给 first，然后然后 first
+                        将 second 的属性依次复制给 first，然后返回 first
 
                     eg:
                     $.merge(['a','b'],['c','d']) -> ["a", "b", "c", "d"]
@@ -802,6 +817,16 @@ jQuery.fn = jQuery.prototype = {
 
 					this.context = document;
 					this.selector = selector;
+                    /*
+                    例如：<div id="ani"></div>
+                    $('#ani') 返回的 this 对象内容为：
+                    {
+                        0 : div#ani,
+                        length : 1,
+                        context : document,
+                        selector : '#ani'
+                    }
+                     */
                     // $('#id') 这种形式处理完毕，返回 this
 					return this;
 				}
@@ -879,13 +904,11 @@ jQuery.fn = jQuery.prototype = {
         jQuery.makeArray(['a','b'],{length:0}) -> {0: "a", 1: "b", length: 2}
         jQuery.makeArray(['c','d'],['a','b']) -> ["a", "b", "c", "d"]
 
-        最后就剩下这一种情况了：
-        $({
-            selector : 'div1',
-            context : 'div2'
-        }) 
+        最后就剩下 selector 是 jQuery 实例这一种情况了（jQuery 实例对象都有 selector 属性，默认是 ""），例如：
+        $($('#div1')) 
         
-        给 this 添加 selector、context 等两个属性，然后将 selector 对象也挂载到 this 对象下
+        给 this 添加 selector、context 等两个属性，然后将 selector 对象也挂载到 this 对象下，
+        所以，$($('#div1')) 和 $('#div1') 结果是一样的
          */
 		if ( selector.selector !== undefined ) {
 			this.selector = selector.selector;
@@ -904,19 +927,21 @@ jQuery.fn = jQuery.prototype = {
     // this 对象的长度
 	length: 0,
 
-    // 转数组，原生元素组成的数组
-    // $('div') -> { 0: div, 1:div, 2:div, length:3}
-    // $('div').toArray() -> [div, div, div]
+    /*
+    作用：转数组，原生元素组成的数组，例如：
+    $('div') -> { 0: div, 1:div, 2:div, length:3}
+    $('div').toArray() -> [div, div, div]
+     */
 	toArray: function() {
 		return core_slice.call( this );
 	},
 
 	// Get the Nth element in the matched element set OR
 	// Get the whole matched element set as a clean array
-    // 转原生集合
-    // $('div').get(0).innerHTML = 'txt';
-    // 没有参数，就相当于 toArray，如果有参数，就返回一个原生元素
-    // 没有参数就是 undefined == null，参数 null == null
+    /*
+    ① 不传参数，和 toArray() 作用一样；
+    ② 传一个数字参数，数组作为索引，返回一个原生 dom 元素，兼容正整数和负整数的写法。例如 0 代表第一个元素，-1 代表最后一个元素
+     */ 
 	get: function( num ) {
 		return num == null ?
 
