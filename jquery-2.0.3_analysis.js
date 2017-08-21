@@ -89,8 +89,17 @@
     这样就把局部的 jQuery 方法挂载到全局对象 window 下面了，所以全局 jQuery 方法就是内部定义的 jQuery 方法。
     另外，这也表明，jQuery 和 $ 是等价的，$ 可以看做是 jQuery 的简写别名。
     
-    为什么说 jQuery 是伪构造函数，看看 jQuery 方法的具体定义就知道了：
-    var jQuery = function( selector, context ) {
+	一般情况下，我们会这样写构造函数：
+	var jQuery = function( selector, context ) {
+		this.selector = selector;
+		this.context = context;
+		...
+	}
+	如果不使用 new 运算符，直接执行 jQuery() 方法时，函数里的 this 指向的是全局的 window 对象，
+	这会导致挂载到 this 对象上的属性和方法全都变成全局属性和方法了，这样会对全局环境造成破坏。
+	所以，jQuery 库并没有采取这种写法，而是这样写：
+
+	var jQuery = function( selector, context ) {
         return new jQuery.fn.init( selector, context, rootjQuery );
     }
 
@@ -2585,6 +2594,84 @@ try {
 	};
 }
 
+/*
+参考：http://zhenhua-lee.github.io/framework/sizzle.html
+
+Sizzle 把复杂选择器表达式，拆成一个个【块表达式】和【块间关系】
+
+【块间关系】分为 4 类：
+ ① ">" 父子关系
+ ② [\x20\t\r\n\f] 祖宗后代关系
+ ③ "+" 紧邻兄弟元素
+ ④ "~" 之后的所有兄弟元素
+
+【块表达式】分为 3 类：
+ ① 简单表达式
+    包括 id、class、tag
+ ② 属性表达式
+ ③ 伪表达式
+    位置伪类、子元素伪类、内容伪类、可见伪类、表单伪类
+
+Sizzle 以【块表达式】为单位进行解析，而且顺序是 “从右到左”，也就是说先分析右边的【块表达式】，再分析左边的【块表达式】
+至于为什么要 “从右到左”，而不是 “从左到右” 。想想 dom 树形结构就很容易理解了，从子节点向上找某个祖先节点容易，但是从祖先节点找到某个后代节点可不那么容易。
+
+不过，也有例外，以 $(".content > p:first")：
+
+<div>
+	<p>aa</p> 
+</div>
+<div class="content">
+	<p>bb</p>
+	<p>cc</p>
+</div>
+
+首先，对选择表达式分解成【块表达式】和【块间关系】
+
+".content > p:first" 
+-> [.content, >, p:first]
+
+然后，“从右向左” 来分析【块表达式】，具体为：
+a. 根据 p:first 找到 <p>aa</p>
+b. 然后验证 <p>aa</p> 的父元素的 class 是不是 content
+c. 父元素 class 不是 content，返回 null
+
+所以：
+① 一般情况下，都是 “从右向左” 解析
+② 遇到位置伪类就 “从左到右” 解析
+③ 如果选择器表达式的最左边存在 #id 选择器，也会 “从左到右” 解析
+ （首先对最左边进行查询，并将其作为下一步的执行上下文，达到缩小查找范围的目的）
+
+
+
+所以，除了位置伪类是 “从左到右” 解析，其他情况都是 “从右向左” 解析。
+
+
+Sizzle 整体结构：
+
+if(document.querySelectorAll) {
+	sizzle = function(query, context) {
+		return makeArray(context.querySelectorAll(query));
+	}
+} else {
+	sizzle 引擎实现，主要模拟querySelectorAll
+}
+
+可以看到，Sizzle 选择器引擎的主要工作就是向上兼容 querySelectorAll 这个 API，假如所有浏览器都支持该 API，那 Sizzle 就没有存在的必要了
+
+几个主要函数：
+Sizzle = function(selector, context, result, seed) // Sizzle引擎的入口函数
+Sizzle.find   // 主查找函数
+Sizzle.filter // 主过滤函数
+Sizzle.selectors.relative: { // 块间关系处理函数集
+	"+" : function() {}, 
+	" " : function() {}, 
+	">" : function() {}, 
+	"~" : function() {}
+} 
+
+*/
+
+
 
 // sizzle 的作用是：输入一个选择器字符串，返回一个符合规则的 DOM 节点列表。
 // 其实在高级浏览器里，这个接口是存在的，就是document.querySelectorAll。
@@ -2686,6 +2773,30 @@ function Sizzle( selector, context, results, seed ) {
 			}
 		}
 
+
+		/*
+		说一下 querySelector 和 querySelectorAll
+
+		(1) querySelector VS querySelectorAll
+
+		querySelector 返回的是一个第一个匹配元素，querySelectorAll 返回的一个所有匹配元素集合
+
+		(2) querySelectorAll VS getElementsBy*
+
+		querySelectorAll 返回的是一个 Static Node List，而 getElementsBy 系列的返回的是一个 Live Node List。
+		返回结果集合后，前者不会自动更新，后者会自动更新。
+
+		eg:
+		// 初始时 dom 中没有 <img> 元素
+		x = document.querySelectorAll('img')
+		y = document.getElementsByTagName('img')
+		document.body.appendChild(new Image())
+		x.length // 0
+		y.length // 1
+
+		
+		
+		*/
 		// QSA path
         // qSA 是指 querySelectorAll
         // support.qsa 是指浏览器支持 querySelectorAll
@@ -2795,19 +2906,46 @@ function Sizzle( selector, context, results, seed ) {
  *	property name the (space-suffixed) string and (if the cache is larger than Expr.cacheLength)
  *	deleting the oldest entry
  */
+/*
+返回值为一个函数（对象），可以向这个对象存储键值对，例如：
+var myCache = createCache();
+var cache = myCache('a','b');
+
+// cache 就是存进去的 value 值
+console.log(cache)
+-> 'b'
+
+// key 值后需要跟空格才能取出 value 值
+console.log(myCache['a '])
+-> 'b'
+
+// key 值后不跟空格是取不出 value 值的
+console.log(myCache['a'])
+-> undefined
+
+总之，cache 是当前缓存操作的 value 值，myCache 是缓存键值对的函数（对象）。
+*/
 function createCache() {
 	var keys = [];
 
 	function cache( key, value ) {
 		// Use (key + " ") to avoid collision with native prototype properties (see Issue #157)
-		// push：向数组的末尾添加一个或更多元素，并返回新的长度
-        // Expr.cacheLength：固定值 50
-        // key += " "，将 key 强制转换为字符串 
+		/*
+		① key 作为属性名，这里在它末尾加一个空格，比较另类。
+		   这是因为 cache 是一个数组（对象），本身具有一些属性，为了不予它本身的属性名冲突，所以只好用另类的属性名以示区分。
+		② push 函数的作用是向数组末尾添加元素，然后返回数组新的长度。Expr.cacheLength 是个常量，50。
+		③ keys 数组在这里只是起到判断数据长度的作用，事件数据是存在 cache 函数（对象）上的。
+		   当长度大于 50 时，删除最早加入的缓存数据。	
+		*/ 
         if ( keys.push( key += " " ) > Expr.cacheLength ) {
 			// Only keep the most recent entries
             // shift：删除并返回数组的第一个元素
 			delete cache[ keys.shift() ];
 		}
+		/*
+		① 在 cache 这个函数（对象）下，存储键值对 key-value，注意这里的 key 是加了空格的
+		② value 作为函数返回值
+		*/
 		return (cache[ key ] = value);
 	}
 	return cache;
@@ -3916,6 +4054,7 @@ Expr.setFilters = new setFilters();
 function tokenize( selector, parseOnly ) {
 	var matched, match, tokens, type,
 		soFar, groups, preFilters,
+		// 这里之所以加一个空格，是因为存的时候就加了一个空格（这样会比较特殊，不至于和 tokenCache 这个方法（对象）的自身属性冲突）
 		cached = tokenCache[ selector + " " ];
 
     // 如果 cached 有数据，直接返回
@@ -3924,24 +4063,55 @@ function tokenize( selector, parseOnly ) {
 	}
 
 	soFar = selector;
-    //groups表示目前已经匹配到的规则组，在这个例子里边，groups的长度最后是2，存放的是每个规则对应的Token序列
+    // groups 表示目前已经匹配到的规则组，在这个例子里边，groups 的长度最后是 2，存放的是每个规则对应的 Token 序列
 	groups = [];
 	preFilters = Expr.preFilter;
 
-    // soFar 表示还没分析完的字符串
+    // 逐步分解 selector 字符串，直到拆分完毕
 	while ( soFar ) {
 
 		// Comma and first run
-        // rcomma = new RegExp( "^" + whitespace + "*," + whitespace + "*" )
-        // rcomma = /^[\x20\t\r\n\f]*,[\x20\t\r\n\f]*/
-        // 逗号或者空白符或空开头，逗号后紧跟空白符或空
-        // eg：rcomma.exec(',a') 返回 [",", index: 0, input: ",a"]
-        // rcomma.exec('div > p + .clr [type="checkbox"], #id:first-child') ,返回 null
+
+		
+		// 第一步：以逗号（,） 为分隔符，拆分 soFar，其中 rcomma = /^[\x20\t\r\n\f]*,[\x20\t\r\n\f]*/
+		/*
+		① 开头必须是 [\x20\t\r\n\f]，所以不通过匹配
+		rcomma.exec('a,b') -> null 
+		② 以下形式可以通过匹配，开头要么是逗号，要么是空格，换行等
+		rcomma.exec(' ,b') -> [" ,", index: 0, input: " ,b"]
+		rcomma.exec(',b')  -> [",", index: 0, input: ",b"]
+		rcomma.exec(', b') -> [", ", index: 0, input: ", b"]
+		*/
 		if ( !matched || (match = rcomma.exec( soFar )) ) {
 			if ( match ) {
 				// Don't consume trailing commas as valid
+				/*
+				注意一下 stringObject.slice(start,end) 用法：
+				第一个参数 start 表示起始下标，省略第二个参数表示知道字符串结尾
+
+				eg: 'abcdef'.slice(2) -> "cdef"
+				
+				以 soFar = ',abcd' 为例：
+				match = rcomma.exec( ',abcd' )
+				-> match = [",", index: 0, input: ",abcd"]
+
+				soFar.slice( match[0].length )
+				-> ',abcd'.slice( 1 )
+				-> "abcd"
+
+				再举个极端点的例子，soFar = ','
+				soFar.slice( match[0].length )
+				-> ','.slice( 1 )
+				-> ""
+
+				这里的做法是，遇到这种情况，soFar 保持不变
+				*/
 				soFar = soFar.slice( match[0].length ) || soFar;
 			}
+			/*
+			① 将 tokens 初始化为 []
+			② 将 tokens 加入到 groups 数组末尾
+			*/
 			groups.push( tokens = [] );
 		}
 
@@ -3949,10 +4119,22 @@ function tokenize( selector, parseOnly ) {
 
 		// Combinators
         // rcombinators = /^[\x20\t\r\n\f]*([>+~]|[\x20\t\r\n\f])[\x20\t\r\n\f]*/
-		// > + ~ 空格 等空白符
-        // eg：rcombinators.exec(' > p + ')
-        // match 为 [" > ", ">", index: 0, input: " > p + "]
-        // 这里处理比较简单的Token ： >, +, 空格, ~
+		/*
+		rcombinators 跟上面的 rcomma 挺类似的，只不过逗号（,）换成了 [>+~]|[\x20\t\r\n\f] 其中之一
+		分别对应 4 种【块间关系】：
+		① ">" 父子关系
+		② [\x20\t\r\n\f] 祖宗后代关系
+		③ "+" 紧邻兄弟元素
+		④ "~" 之后的所有兄弟元素
+
+		那就以 > 为例：
+		① 开头必须是 [\x20\t\r\n\f]，所以不通过匹配
+		rcombinators.exec('a>b') -> null 
+		② 以下形式可以通过匹配，开头要么是逗号，要么是空格，换行等
+		rcombinators.exec(' >b') -> [" >", ">", index: 0, input: " >b"]
+		rcombinators.exec('>b')  -> [">", ">", index: 0, input: ">b"]
+		rcombinators.exec('> b') -> ["> ", ">", index: 0, input: "> b"]
+		*/
         if ( (match = rcombinators.exec( soFar )) ) {
             // 匹配到的字符串片段 " > "
 			matched = match.shift();
