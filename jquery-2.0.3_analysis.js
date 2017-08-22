@@ -4071,8 +4071,7 @@ function tokenize( selector, parseOnly ) {
 	while ( soFar ) {
 
 		// Comma and first run
-
-		
+	
 		// 第一步：以逗号（,） 为分隔符，拆分 soFar，其中 rcomma = /^[\x20\t\r\n\f]*,[\x20\t\r\n\f]*/
 		/*
 		① 开头必须是 [\x20\t\r\n\f]，所以不通过匹配
@@ -4136,7 +4135,7 @@ function tokenize( selector, parseOnly ) {
 		rcombinators.exec('> b') -> ["> ", ">", index: 0, input: "> b"]
 		*/
         if ( (match = rcombinators.exec( soFar )) ) {
-            // 匹配到的字符串片段 " > "
+            // 匹配到的 soFar 片段，比如 " >"
 			matched = match.shift();
 			tokens.push({
                 // 匹配到的字符串片段 " > "
