@@ -4045,19 +4045,19 @@ function setFilters() {}
 setFilters.prototype = Expr.filters = Expr.pseudos;
 Expr.setFilters = new setFilters();
 
-// 词法分析
-//假设传入进来的选择器是：div > p + .clr [type="checkbox"], #id:first-child
-//这里可以分为两个规则：div > p + .clr [type="checkbox"] 以及 #id:first-child
-//返回的需要是一个Token序列
-//Sizzle的Token格式如下 ：{value:'匹配到的字符串', type:'对应的Token类型', matches:'正则匹配到的一个结构'}
-// parseOnly 是否只是检查 selector 的合法性
+/*
+① 如果 parseOnly 为 true 表示只是测试选择器的合法性，那就返回 soFar 剩余长度（如果长度不为 0 ，那就说明选择器不合法）
+② 否则，最后返回值为一个二维数组，例如： [[token,token],[token,token,tokens],[token,token,tokens,tokens]]
+
+其中 token 类型有：TAG, ID, CLASS, ATTR, CHILD, PSEUDO, >, +, 空格, ~
+*/
 function tokenize( selector, parseOnly ) {
 	var matched, match, tokens, type,
 		soFar, groups, preFilters,
 		// 这里之所以加一个空格，是因为存的时候就加了一个空格（这样会比较特殊，不至于和 tokenCache 这个方法（对象）的自身属性冲突）
 		cached = tokenCache[ selector + " " ];
-
-    // 如果 cached 有数据，直接返回
+	
+	// 分解完每一个 selector，都会把相应的 tokens 存在缓存里，如果下次遇到同样的 selector 就不会重新分析了，直接去缓存取
 	if ( cached ) {
 		return parseOnly ? 0 : cached.slice( 0 );
 	}
@@ -4110,6 +4110,10 @@ function tokenize( selector, parseOnly ) {
 			/*
 			① 将 tokens 初始化为 []
 			② 将 tokens 加入到 groups 数组末尾
+			③ 后面对 tokens 的修改，也是对 groups 数组的修改
+			④ 外层 while 循环执行多次，可能多次执行这句，最后，groups 大致结构为：
+			   [[token,token],[token,token,tokens],[token,token,tokens,tokens]]
+			   其中	[token,token] 为 tokens
 			*/
 			groups.push( tokens = [] );
 		}
@@ -4137,29 +4141,47 @@ function tokenize( selector, parseOnly ) {
         if ( (match = rcombinators.exec( soFar )) ) {
             // 匹配到的 soFar 片段，比如 " >"
 			matched = match.shift();
+			// 这里处理 4 中类型 token ： >, +, 空格, ~
 			tokens.push({
                 // 匹配到的字符串片段 " > "
 				value: matched,
 				// Cast descendant combinators to space
-                // 匹配到的token类型，不包括空格
-                // token类型有：TAG, ID, CLASS, ATTR, CHILD, PSEUDO, NAME, >, +, 空格, ~
-				// 这里是 >
+				/*
+				whitespace = "[\\x20\\t\\r\\n\\f]"
+				rtrim = new RegExp("^" + whitespace + "+|((?:^|[^\\\\])(?:\\\\.)*)" + whitespace + "+$", "g")
+				即：rtrim = /^[\x20\t\r\n\f]+|((?:^|[^\\])(?:\\.)*)[\x20\t\r\n\f]+$/g
+				
+				// 以下保持原字符串不变
+				"+".replace( rtrim, " " )   -> "+"
+				"~".replace( rtrim, " " )   -> "~"
+				">".replace( rtrim, " " )   -> ">"
+
+				// 以下将原字符串替换为 " "
+				" ".replace( rtrim, " " )        -> " "
+				"\r".replace( rtrim, " " )       -> " "
+				"\n".replace( rtrim, " " )       -> " "
+				"\t".replace( rtrim, " " )       -> " "
+				"\t\n\n  ".replace( rtrim, " " ) -> " "
+
+				也就是说，空格、回车、换行、换页等空白符存的类型都是空格（" "）
+				*/
                 type: match[0].replace( rtrim, " " )
 			});
-            // 已经分析过的字符串丢掉
+            // 留下剩余的部分
 			soFar = soFar.slice( matched.length );
 		}
 
 		// Filters
-         // 这里处理另外几种Token ： TAG, ID, CLASS, ATTR, CHILD, PSEUDO, NAME
          /*
             Expr.filter : {
+				'ID': function(){...},
                 "TAG": function(){...},
-                "CLASS":function(){...},
-                "ATTR":function(){...},
-                "CHILD":function(){...},
-                "PSEUDO":function(){...},
+                "CLASS": function(){...},
+                "ATTR": function(){...},
+                "CHILD": function(){...},
+                "PSEUDO": function(){...},
             }
+			其中，ID 属性是后面动态加入的
 
             matchExpr = {
                 "ID": new RegExp( "^#(" + characterEncoding + ")" ),
@@ -4183,15 +4205,19 @@ function tokenize( selector, parseOnly ) {
                 "PSEUDO": function( match ) {}
             }
          */
+		// type 为 "ID"、"TAG"、"CLASS"、"ATTR"、"CHILD"、"PSEUDO" 其中一种
 		for ( type in Expr.filter ) {
-            // 如果通过正则匹配到了Token格式：match = matchExpr[ type ].exec( soFar )
-            // 然后看看需不需要预处理：!preFilters[ type ]
-            // 如果需要 ，那么通过预处理器将匹配到的处理一下 ： match = preFilters[ type ]( match )
-            // ATTR、CHILD、PSEUDO 这三种 token 需要预处理一下
+			/*
+			进入 if 代码块的条件为：
+			soFar 能通过 matchExpr[ type ] 这个正则的匹配
+
+			① 对于 type 为 "ID"、"TAG"、"CLASS"，那么 match = matchExpr[ type ].exec( soFar )
+			② 对于 type 为 "ATTR"、"CHILD"、"PSEUDO"，那么 match = preFilters[ type ]( matchExpr[ type ].exec( soFar ) )
+			*/
 			if ( (match = matchExpr[ type ].exec( soFar )) && (!preFilters[ type ] ||
 				(match = preFilters[ type ]( match ))) ) {
 
-                // 匹配到的token
+                // 匹配到的 soFar 片段，比如 'div'
 				matched = match.shift();
 				tokens.push({
 					value: matched,  // 匹配到的字符串片段
@@ -4204,7 +4230,6 @@ function tokenize( selector, parseOnly ) {
 		}
 
         // 如果没有找到片段，说明选择器写法有误，那就不再继续了
-        // 异常处理
 		if ( !matched ) {
 			break;
 		}
@@ -4213,14 +4238,21 @@ function tokenize( selector, parseOnly ) {
 	// Return the length of the invalid excess
 	// if we're just parsing
 	// Otherwise, throw an error or return tokens
-    // 如果只是测试选择器的合法性，那就返回soFar剩余长度（长度不为0 ，说明选择器不合法）
-    // 否则，如果soFar剩余长度不为0，抛出异常，为 0 ，则把选择器和对应的groups缓存，并返回
+	/*
+	① 如果只是测试选择器的合法性，那就返回 soFar 剩余长度（如果长度不为 0 ，那就说明选择器不合法）
+	② 如果 soFar 不是空字符串（没分解完），那就报错。如果为空字符串，表示正常分解完，那就缓存下来
+
+	注意一下 tokenCache( selector, groups ).slice( 0 )
+	tokenCache( selector, groups ) 不光是存储键值对 selector-groups，它还有返回值 groups
+
+	所以，最后的返回结果是 groups 数组的副本（深复制）
+	*/
 	return parseOnly ?
 		soFar.length :
 		soFar ?
 			Sizzle.error( selector ) :
 			// Cache the tokens
-            // selector 和对应的 groups 存在 cache 里
+            // 分解完每一个 selector，都会把相应的 tokens 存在缓存里，如果下次遇到同样的 selector 就不会重新分析了，直接去缓存取
 			tokenCache( selector, groups ).slice( 0 );
 }
 
