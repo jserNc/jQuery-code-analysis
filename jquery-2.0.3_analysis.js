@@ -2552,18 +2552,50 @@ var i,
 	// CSS escapes http://www.w3.org/TR/CSS21/syndata.html#escaped-characters
 	runescape = new RegExp( "\\\\([\\da-f]{1,6}" + whitespace + "?|(" + whitespace + ")|.)", "ig" ),
 	funescape = function( _, escaped, escapedWhitespace ) {
+		/*
+		前缀 0x 表示十六进制
+		① "0x" + escaped 返回字符串，eg : "0x" + '73ab30' -> "0x73ab30"
+		② "0x" + escaped - 0x10000 返回数字，eg : "0x73ab30" - 0x10000 -> 7514928
+		*/
 		var high = "0x" + escaped - 0x10000;
 		// NaN means non-codepoint
 		// Support: Firefox
 		// Workaround erroneous numeric interpretation of +"0x"
+		/*
+		当 escaped 含有不是 16 进制字符的时候，如 '0xabcdef' - 0x10000 —> NaN
+		这里用 high !== high 表示 high 为 NaN。
+
+		因为 NaN 是 JavaScript 中唯一不等于自身的值
+		*/
 		return high !== high || escapedWhitespace ?
 			escaped :
 			// BMP codepoint
+			/*
+			BMP 码点：
+			参考：
+			https://segmentfault.com/a/1190000006960642
+			http://javascript.ruanyifeng.com/grammar/string.html
+			
+			String.fromCharCode 返回一个或多个 Unicode 代码组成的字符串
+			eg:
+			String.fromCharCode( 0x10000 ) -> " "（空格）
+			String.fromCharCode(100,114,101,97,109) -> "dream"
+			*/
 			high < 0 ?
 				String.fromCharCode( high + 0x10000 ) :
 				// Supplemental Plane codepoint (surrogate pair)
 				String.fromCharCode( high >> 10 | 0xD800, high & 0x3FF | 0xDC00 );
 	};
+	/*
+	(1) BMP
+	Unicode 字符分为 17 组平面，每个平面拥有 2^16 (65,536)个码位。
+	第一个平面（0 号平面）我们称之为 BMP（基本多文种平面, Basic Multilingual Plane）
+	*/
+
+
+
+
+
 
 // Optimize for push.apply( _, NodeList )
 try {
@@ -4059,6 +4091,7 @@ function tokenize( selector, parseOnly ) {
 	
 	// 分解完每一个 selector，都会把相应的 tokens 存在缓存里，如果下次遇到同样的 selector 就不会重新分析了，直接去缓存取
 	if ( cached ) {
+		// 如果测试选择器的合法性，就返回 0，表示是合法的。否则就返回缓存的副本。
 		return parseOnly ? 0 : cached.slice( 0 );
 	}
 
@@ -4104,6 +4137,12 @@ function tokenize( selector, parseOnly ) {
 				-> ""
 
 				这里的做法是，遇到这种情况，soFar 保持不变
+
+				也就是说，遇到这种情况，soFar 字符串一直是 ','，长度不会减少，不会为 0，
+				那么就是不合符要求的 selector，会报错！
+
+				执行 $(',')，报错！
+				Syntax error, unrecognized expression: ,
 				*/
 				soFar = soFar.slice( match[0].length ) || soFar;
 			}
@@ -4229,7 +4268,7 @@ function tokenize( selector, parseOnly ) {
 			}
 		}
 
-        // 如果没有找到片段，说明选择器写法有误，那就不再继续了
+        // 如果没有找到片段，说明选择器写法有误，那就不再继续循环了
 		if ( !matched ) {
 			break;
 		}
@@ -4250,6 +4289,14 @@ function tokenize( selector, parseOnly ) {
 	return parseOnly ?
 		soFar.length :
 		soFar ?
+			/*
+			Sizzle.error = function( msg ) {
+				throw new Error( "Syntax error, unrecognized expression: " + msg );
+			};
+			eg:
+			执行 $(',') 会报错：
+			-> Uncaught Error: Syntax error, unrecognized expression: ,
+			*/
 			Sizzle.error( selector ) :
 			// Cache the tokens
             // 分解完每一个 selector，都会把相应的 tokens 存在缓存里，如果下次遇到同样的 selector 就不会重新分析了，直接去缓存取
