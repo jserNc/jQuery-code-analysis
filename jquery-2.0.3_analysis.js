@@ -2549,9 +2549,17 @@ var i,
 
 	rescape = /'|\\/g,
 
+    /*
+    runescape = /\\([\da-f]{1,6}[\x20\t\r\n\f]?|([\x20\t\r\n\f])|.)/gi
+    匹配 3 种情况，各举一例(字符串种的 \\ 相当于 \)：
+    ① 1-6 位十六进制字符runescape.exec('\\123abc ') -> ["\123abc ", "123abc ", undefined, index: 0, input: "\123abc "]
+    ② 空白字符 runescape.exec('\\\t') -> ["\ ", "    ", "    ", index: 0, input: "\  "]
+    ③ 换行符以外的任意字符 runescape.exec('\\z') -> ["\z", "z", undefined, index: 0, input: "\z"]
+     */
 	// CSS escapes http://www.w3.org/TR/CSS21/syndata.html#escaped-characters
 	runescape = new RegExp( "\\\\([\\da-f]{1,6}" + whitespace + "?|(" + whitespace + ")|.)", "ig" ),
-	funescape = function( _, escaped, escapedWhitespace ) {
+	// 根据十六进制码点 escaped 返回相应的字符
+    funescape = function( _, escaped, escapedWhitespace ) {
 		/*
 		前缀 0x 表示十六进制
 		① "0x" + escaped 返回字符串，eg : "0x" + '73ab30' -> "0x73ab30"
@@ -2582,19 +2590,76 @@ var i,
 			String.fromCharCode(100,114,101,97,109) -> "dream"
 			*/
 			high < 0 ?
+                // BMP 字符，把刚才减的加回去
 				String.fromCharCode( high + 0x10000 ) :
 				// Supplemental Plane codepoint (surrogate pair)
 				String.fromCharCode( high >> 10 | 0xD800, high & 0x3FF | 0xDC00 );
 	};
 	/*
 	(1) BMP
-	Unicode 字符分为 17 组平面，每个平面拥有 2^16 (65,536)个码位。
-	第一个平面（0 号平面）我们称之为 BMP（基本多文种平面, Basic Multilingual Plane）
-	*/
+	Unicode 字符（U+0000 - U+10FFFF）分为 17 组平面，每个平面拥有 2^16 (65,536)个码点。
+	
+    ① 第一个平面（0 号平面）我们称之为 BMP（基本多文种平面, Basic Multilingual Plane），它包含了最常用的从 U+0000 到 U+FFFF 的码点。
+	
+    ② 其余 16号平面（U+100000 到 U+10FFFF）称为补充的平面。这里我将不讨论它；
 
+    所以，总体上可以将 Unicode 字符分为 BMP 字符和非 BMP 字符（补充字符）两大类。
 
+    (2) javascript 字符集
+    每个字符在 JavaScript 内部都是以 16 位（即 2 个字节）的 UTF-16 格式储存。也就是说，JavaScript 的单位字符长度固定为 16 位长度，即 2 个字节。
 
+    但是，UTF-16 有两种长度：
+    ① 对于 U+0000 到 U+FFFF 之间的字符，长度为 16 位（即 2 个字节）；
+    ② 对于 U+10000 到 U+10FFFF 之间的字符，长度为 32 位（即4个字节），而且前两个字节在 0xD800 到 0xDBFF 之间，后两个字节在 0xDC00 到 0xDFFF 之间。
+    举例来说，U+1D306 对应的字符写成 UTF-16 就是 0xD834 0xDF06。浏览器会正确将这四个字节识别为一个字符，但是 JavaScript 内部的字符长度总是固定为 16 位，会把这四个字节视为两个字符。
+    
+    var s = '\uD834\uDF06';
 
+    s.length // 2
+    /^.$/.test(s) // false
+    s.charAt(0) // ""
+    s.charAt(1) // ""
+    s.charCodeAt(0) // 55348
+    s.charCodeAt(1) // 57094
+
+    对于 U+10000 到 U+10FFFF 之间的字符，JavaScript 总是视为两个字符（字符的 length 属性为 2），用来匹配单个字符的正则表达式会失败（ JavaScript 认为这里不止一个字符），
+    charAt 方法无法返回单个字符，charCodeAt 方法返回每个字节对应的十进制值
+
+    对于 4 个字节的 Unicode 字符，假定 C 是字符的 Unicode 编号，H 是前两个字节，L 是后两个字节，则它们之间的换算关系如下：
+
+    // 将大于 U+FFFF 的字符，从 Unicode 转为 UTF-16
+    H = Math.floor((C - 0x10000) / 0x400) + 0xD800
+    L = (C - 0x10000) % 0x400 + 0xDC00
+
+    换种写法：
+    H = ((C - 0x10000) >> 10) | 0xD800
+    L = ((C - 0x10000) & 0x3FF) | 0xDC00
+
+    A. 先看看 H = Math.floor((C - 0x10000) / 0x400) + 0xD800 和 H = ((C - 0x10000) >> 10) | 0xD800 为什么等价：
+    
+    0x400 换成十进制就是 1024， >> 10 表示按位右移 10 位，每右移 1 位相当于除 2，右移 10 位就是除以 2^10 = 1024
+    另外，除法（/）不能保证结果是整数，但是右移的结果一定是整数，eg：
+    C = 0x1da39              -> 121401
+    (C - 0x10000) / 0x400    -> 54.5556640625
+    (C - 0x10000) >> 10      -> 54
+
+    上面两种写法一个是 + 0xD800，一个是 | 0xD800，为什么会一样呢？
+    0xD800 换成二进制是 0b1101100000000000 (后面 11 个 0)
+    假设 C 为最大的 0x10FFFF，(0x10FFFF - 0x10000) >> 10 -> 0b1111111111（后面 10 个 1）
+    所以，可以看出，+ 和 | 效果确实一样，| 运算速度更快一些。
+
+    B. 再看看 L = (C - 0x10000) % 0x400 + 0xDC00 和 L = ((C - 0x10000) & 0x3FF) | 0xDC00 为什么等价：
+    0x400 -> 0b10000000000
+    0x3FF ->  0b1111111111
+
+    % 0x400 意味着舍弃大于等于 0x400 的部分，保留小于 0x400 的部分
+    & 0x3FF 前面 6 位都是 0，后面 10 位都是 1，所以也是保留小于 0x400 的部分
+
+    另外 0xDC00 -> 0b1101110000000000 (后面 10 个 0)，所以 + 0xDC00 和 | 0xDC00 效果一样。
+
+    // 将大于 U+FFFF 的字符，从 UTF-16 转为 Unicode
+    C = (H - 0xD800) * 0x400 + L - 0xDC00 + 0x10000
+    */
 
 
 // Optimize for push.apply( _, NodeList )
