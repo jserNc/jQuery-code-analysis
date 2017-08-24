@@ -2483,13 +2483,17 @@ var i,
 	// Regular expressions
 
 	// Whitespace characters http://www.w3.org/TR/css3-selectors/#whitespace
-	// \x20 空格 \t 制表符  \r 回车  \n 换行 \f 换页
-    // 难道不应该是 "[\x20\t\r\n\f]" 吗？
-    // 确实！"[\\x20\\t\\r\\n\\f]" 就是指字符串 "[\x20\t\r\n\f]"
-    // 但是，如果直接写 "[\x20\t\r\n\f]"，就会以空格，回车，换行等符号显示了，这不是我们想要的
-    // '\\' 显示就是 '\'
-    // 以下代表“空白符”
+	// “空白符” \x20 空格 \t 制表符  \r 回车  \n 换行 \f 换页
     whitespace = "[\\x20\\t\\r\\n\\f]",
+	
+	/*
+	r = new RegExp(characterEncoding)
+	-> r = /(?:\\.|[\w-]|[^\x00-\xa0])+/
+	三类可以通过匹配：
+	① \任意非换行字符    r.exec('\\1')  -> ["\1", index: 0, input: "\1"]
+	② word 或 -          r.exec('-')    -> ["-", index: 0, input: "-"]
+	③ 非 \x00-\xa0 字符  如 r.exec('\xab') 可以通过匹配，只是字符 '\xab' 在当前文件编码下不能显示，所以这里就不写了
+	*/
 	// http://www.w3.org/TR/css3-syntax/#characters
 	characterEncoding = "(?:\\\\.|[\\w-]|[^\\x00-\\xa0])+",
 
@@ -2497,7 +2501,13 @@ var i,
 	// An unquoted value should be a CSS identifier http://www.w3.org/TR/css3-selectors/#attribute-selectors
 	// Proper syntax: http://www.w3.org/TR/CSS21/syndata.html#value-def-identifier
 	identifier = characterEncoding.replace( "w", "w#" ),
-
+	
+	/*
+	r = new RegExp(attributes);
+	r.exec("[a=b]")      -> ["[a=b]", "a", "=", undefined, undefined, "b", index: 0, input: "[a=b]"]
+	r.exec("[a ^= b]")   -> ["[a ^= b]", "a", "^=", undefined, undefined, "b", index: 0, input: "[a ^= b]"]
+	r.exec("[a $= 'b']") -> ["[a $= 'b']", "a", "$=", "'", "b", undefined, index: 0, input: "[a $= 'b']"]
+	*/
 	// Acceptable operators http://www.w3.org/TR/selectors/#attribute-selectors
 	attributes = "\\[" + whitespace + "*(" + characterEncoding + ")" + whitespace +
 		"*(?:([*^$|!~]?=)" + whitespace + "*(?:(['\"])((?:\\\\.|[^\\\\])*?)\\3|(" + identifier + ")|)|)" + whitespace + "*\\]",
@@ -2508,6 +2518,11 @@ var i,
 	//   then anything else
 	// These preferences are here to reduce the number of selectors
 	//   needing tokenize in the PSEUDO preFilter
+	/*
+	r = new RegExp( "^" + pseudos )
+	r.exec(':not([type="submit"])')
+	-> [":not([type="submit"])", "not", "[type="submit"]", undefined, undefined, "[type="submit"]", "type", "=", """, "submit", undefined, index: 0, input: ":not([type="submit"])"]
+	*/
 	pseudos = ":(" + characterEncoding + ")(?:\\(((['\"])((?:\\\\.|[^\\\\])*?)\\3|((?:\\\\.|[^\\\\()[\\]]|" + attributes.replace( 3, 8 ) + ")*)|.*)\\)|)",
 
 	// Leading and non-escaped trailing whitespace, capturing some non-whitespace characters preceding the latter
@@ -2529,6 +2544,12 @@ var i,
 		"TAG": new RegExp( "^(" + characterEncoding.replace( "w", "w*" ) + ")" ),
 		"ATTR": new RegExp( "^" + attributes ),
 		"PSEUDO": new RegExp( "^" + pseudos ),
+		/*
+		matchExpr.CHILD.exec(':first-child')
+		-> [":first-child", "first", "child", undefined, undefined, undefined, undefined, undefined, undefined, index: 0, input: ":first-child"]
+		matchExpr.CHILD.exec(":nth-child(-2n+3)")
+		-> [":nth-child(-2n+3)", "nth", "child", "-2n+3", "-2n", "-", "2", "+", "3", index: 0, input: ":nth-child(-2n+3)"]
+		*/
 		"CHILD": new RegExp( "^:(only|first|last|nth|nth-last)-(child|of-type)(?:\\(" + whitespace +
 			"*(even|odd|(([+-]|)(\\d*)n|)" + whitespace + "*(?:([+-]|)" + whitespace +
 			"*(\\d+)|))" + whitespace + "*\\)|)", "i" ),
@@ -2579,11 +2600,6 @@ var i,
 			escaped :
 			// BMP codepoint
 			/*
-			BMP 码点：
-			参考：
-			https://segmentfault.com/a/1190000006960642
-			http://javascript.ruanyifeng.com/grammar/string.html
-			
 			String.fromCharCode 返回一个或多个 Unicode 代码组成的字符串
 			eg:
 			String.fromCharCode( 0x10000 ) -> " "（空格）
@@ -2596,6 +2612,10 @@ var i,
 				String.fromCharCode( high >> 10 | 0xD800, high & 0x3FF | 0xDC00 );
 	};
 	/*
+	参考：
+	https://segmentfault.com/a/1190000006960642
+	http://javascript.ruanyifeng.com/grammar/string.html
+
 	(1) BMP
 	Unicode 字符（U+0000 - U+10FFFF）分为 17 组平面，每个平面拥有 2^16 (65,536)个码点。
 	
@@ -3682,19 +3702,53 @@ Expr = Sizzle.selectors = {
 	},
 
 	preFilter: {
+		/*
+		举几个例子：
+		"[a ^= b]"   -> match = ["[a ^= b]", "a", "^=", undefined, undefined, "b", index: 0, input: "[a ^= b]"]
+		"[a=b]"      -> match = ["[a=b]", "a", "=", undefined, undefined, "b", index: 0, input: "[a=b]"]
+		"[a $= 'b']" -> match = ["[a $= 'b']", "a", "$=", "'", "b", undefined, index: 0, input: "[a $= 'b']"]
+		*/
 		"ATTR": function( match ) {
+			// 修正属性名（将 Unicode 码点转成相应字符）
 			match[1] = match[1].replace( runescape, funescape );
 
 			// Move the given value to match[3] whether quoted or unquoted
+			// 修正属性值（将属性值移到 match[3] 位置，并将 Unicode 码点转成相应字符）
 			match[3] = ( match[4] || match[5] || "" ).replace( runescape, funescape );
-
+			
+			/*
+			a[title~=num] 
+			作用：获取具有这个属性且属性值是以一个空格分割的列表，其中包含属性值的 DOM 对象
+			
+			num 对空格敏感，所以特殊处理，例如：
+			"[a $= 'b']" -> match = ["[a $= 'b']", "a", "$=", "'", "b", undefined, index: 0, input: "[a $= 'b']"]
+			可以看到 match[3] 前后的空格已经给去掉了，所以这里要重新加上
+			*/
 			if ( match[2] === "~=" ) {
 				match[3] = " " + match[3] + " ";
 			}
-
+			// 返回数组前 4 个元素（因为这些就够用了）
 			return match.slice( 0, 4 );
 		},
+		/*
+		例如：
+		matchExpr.CHILD.exec(':first-child')
+		-> match = [":first-child", "first", "child", undefined, undefined, undefined, undefined, undefined, undefined, index: 0, input: ":first-child"]
+		
+		matchExpr.CHILD.exec(":nth-child(even)")
+		-> [":nth-child(even)", "nth", "child", "even", undefined, undefined, undefined, undefined, undefined, index: 0, input: ":nth-child(even)"]
 
+		matchExpr.CHILD.exec(":nth-child(-2n+3)")
+		-> match = [":nth-child(-2n+3)", "nth", "child", "-2n+3", "-2n", "-", "2", "+", "3", index: 0, input: ":nth-child(-2n+3)"]
+		
+		match[1] type 取值有： only、first、last、nth、nth-last
+		match[2] what 取值有： child、of-type
+		match[3] 表示参数，只能是 type 为 nth、nth-last 时才有参数
+				 xn + y 或 odd/even
+		
+		match[4]、match[5]、match[6]、match[7]、match[8] 
+		也都是针对 type 为 nth、nth-last 的情况
+		*/
 		"CHILD": function( match ) {
 			/* matches from matchExpr["CHILD"]
 				1 type (only|nth|...)
@@ -3706,40 +3760,103 @@ Expr = Sizzle.selectors = {
 				7 sign of y-component
 				8 y of y-component
 			*/
+			// type 转小写字符
 			match[1] = match[1].toLowerCase();
+			
+			/*
+			① jQuery( ":nth-of-type(index/even/odd/equation)" )
+			选择同属于一个父元素之下，并且标签名相同的子元素中的第 n 个
 
+			② jQuery( ":nth-child(index/even/odd/equation)" )
+			选择父元素的第 n 个子元素
+
+			其中：
+			index 为每个相匹配子元素的索引值，从1开始
+			even 表示偶数索引，odd 表示奇数索引
+			equation 表示一个方程式，如 4n
+			*/
 			if ( match[1].slice( 0, 3 ) === "nth" ) {
 				// nth-* requires argument
+				/*
+				:nth-of-type() 或 :nth-child 都需要参数，如果没参数就报错！
+				*/
 				if ( !match[3] ) {
 					Sizzle.error( match[0] );
 				}
 
 				// numeric x and y parameters for Expr.filter.CHILD
 				// remember that false/true cast respectively to 0/1
+				/*
+				分两种：
+				① ":nth-child(even)"
+				match[3] 为 "even"，match[4]、match[5]、match[6]、match[7]、match[8] 都是 undefined
+				
+				② ":nth-child(-2n+3)"
+				match[4] xn + y 表达式中的 xn 部分，如 "-2n"
+				match[5] xn 的符号，正或负，如 "-"
+				match[6] x 的值，如 "2"
+				match[7] y 的符号，正或负，如 "+"
+				match[8] y 的值，如 "3"
+
+				对于 ①：
+				match[4] = +(match[5] + (match[6] || 1)) 
+				-> 比如 +("-" + ("2" || 1))
+				-> -2
+				
+				match[5] = +( match[7] + match[8] )
+				-> 比如 +( "+" + "3" )
+				-> 3
+
+				对于 ②：
+				match[4] = +( 2 * ( match[3] === "even" || match[3] === "odd" ) );
+				-> 比如 +( 2 * true )
+				-> 2
+
+				match[5] = +( match[3] === "odd" )
+				-> 比如 +( false )
+				-> 0
+
+				所以，match[4]、match[4] 分别对应 'xn + y' 中的 x、y 转成数值后的形式
+				参数为 'even' 相当于 '2n'，参数 'odd' 相当于 '2n + 1'
+				*/
 				match[4] = +( match[4] ? match[5] + (match[6] || 1) : 2 * ( match[3] === "even" || match[3] === "odd" ) );
 				match[5] = +( ( match[7] + match[8] ) || match[3] === "odd" );
 
 			// other types prohibit arguments
+			// 其他 type 如果有参数，也报错！
 			} else if ( match[3] ) {
 				Sizzle.error( match[0] );
 			}
 
 			return match;
 		},
-
+		/*
+		matchExpr.PSEUDO.exec(':not([type="submit"])')
+		-> [":not([type="submit"])", "not", "[type="submit"]", undefined, undefined, "[type="submit"]", "type", "=", """, "submit", undefined, index: 0, input: ":not([type="submit"])"]
+		matchExpr.PSEUDO.exec(':first')
+		-> [":first", "first", undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, index: 0, input: ":first"]
+		matchExpr.PSEUDO.exec(':not(.red)')
+		-> [":not(.red)", "not", ".red", undefined, undefined, ".red", undefined, undefined, undefined, undefined, undefined, index: 0, input: ":not(.red)"]
+		
+		matchExpr.PSEUDO.exec(':contains("nc.com")')
+		-> match = [":contains("nc.com")", "contains", ""nc.com"", """, "nc.com", undefined, undefined, undefined, undefined, undefined, undefined, index: 0, input: ":contains("nc.com")"]
+		*/
+		// 修正 match[0] 和 match[2]，返回返回 [match[0],match[1],match[2]]
 		"PSEUDO": function( match ) {
 			var excess,
 				unquoted = !match[5] && match[2];
-
+			
+			// child 是伪类的一种，上面已经分析过 child 伪类，所以这里跳过
 			if ( matchExpr["CHILD"].test( match[0] ) ) {
 				return null;
 			}
-
+			
 			// Accept quoted arguments as-is
 			if ( match[3] && match[4] !== undefined ) {
 				match[2] = match[4];
 
 			// Strip excess characters from unquoted arguments
+			// 取出多余的字符
 			} else if ( unquoted && rpseudo.test( unquoted ) &&
 				// Get excess from tokenize (recursively)
 				(excess = tokenize( unquoted, true )) &&
@@ -3747,6 +3864,7 @@ Expr = Sizzle.selectors = {
 				(excess = unquoted.indexOf( ")", unquoted.length - excess ) - unquoted.length) ) {
 
 				// excess is a negative index
+				// eg : 'abcdefg'.slice(0,-2) -> "abcde"
 				match[0] = match[0].slice( 0, excess );
 				match[2] = unquoted.slice( 0, excess );
 			}
