@@ -2792,11 +2792,30 @@ Sizzle.selectors.relative: { // 块间关系处理函数集
 
 // sizzle 的作用是：输入一个选择器字符串，返回一个符合规则的 DOM 节点列表。
 // 其实在高级浏览器里，这个接口是存在的，就是document.querySelectorAll。
-// 只不过低级浏览器里没这个接口，所以才会需要 sizzle这个css 选择器引擎
+// 只不过低级浏览器里没这个接口，所以才会需要 sizzle 这个css 选择器引擎
 
 //* 1、对于单一选择器，且是ID、Tag、Class三种类型之一，则直接获取并返回结果 
 //* 2、对于支持querySelectorAll方法的浏览器，通过执行querySelectorAll方法获取并返回匹配的DOM元素 
 //* 3、除上之外则调用select方法获取并返回匹配的DOM元素 
+
+/*
+看看怎么从 jQuery.fn.init 方法走到 Sizzle 方法的：
+
+① jQuery.fn.init 方法中调用 jQuery.fn.find 方法：
+else if ( !context || context.jquery ) {
+    return ( context || rootjQuery ).find( selector );
+} else {
+    return this.constructor( context ).find( selector );
+}
+
+② jQuery.fn.find 中调用 jQuery.find 方法：
+for ( i = 0; i < len; i++ ) {
+	jQuery.find( selector, self[ i ], ret );
+}
+
+③ jQuery.find 其实就是 Sizzle 函数
+jQuery.find = Sizzle;
+*/
 
 // context 为选择的范围
 function Sizzle( selector, context, results, seed ) {
@@ -2808,43 +2827,53 @@ function Sizzle( selector, context, results, seed ) {
 		setDocument( context );
 	}
 
+	// 修正 context 和 results
 	context = context || document;
 	results = results || [];
 
-    // 如果没有传入选择器规则，或者规则不是字符串类型，则返回results
+    // 选择器不合法，则返回 results
 	if ( !selector || typeof selector !== "string" ) {
 		return results;
 	}
 
-    // 元素的 nodeType 是 1，文档（dom树的根节点）nodeType 是 9
-    // 如 div,a,span,ul nodeType 都是 1；document 的 nodeType 是 9
-    // 属性 nodeType 是 2，文本 nodeType 是 3
-    // 若context既不是document（nodeType=9），也不是element(nodeType=1)，那么就返回空集合 
+    /*
+	元素的 nodeType 是 1，文档（document）nodeType 是 9
+	若 context 既不是元素又不是 document，那就返回空数组
+    */
 	if ( (nodeType = context.nodeType) !== 1 && nodeType !== 9 ) {
 		return [];
 	}
 
     // html 文档，并且没有第一匹配出来的 seed
 	if ( documentIsHTML && !seed ) {
-
 		// Shortcuts
-        // 最上面有个同名的 rquickExpr 变量，不要弄混淆了
-        // rquickExpr = /^(?:#([\w-]+)|(\w+)|\.([\w-]+))$/
-        // 拆开两部分 
-        // #([\w-]+) 匹配 #id   match[1]
-        // (\w+) 匹配 tag  match[2]
-        // \.([\w-]+) 匹配 .class  match[3]
-     
-        // 如果是#id字符串，会match[1]会取出id，例如：
-        // selector = '#test';得到 match：
-        //  ["#test", "test", undefined, undefined, index: 0, input: "#test"]
+		/*
+		rquickExpr = /^(?:#([\w-]+)|(\w+)|\.([\w-]+))$/
+		匹配 3 种情况
+		① #([\w-]+) 匹配 #id      match[1]
+		② (\w+) 匹配 tag          match[2]
+		③ \.([\w-]+) 匹配 .class  match[3]
+		*/
 		if ( (match = rquickExpr.exec( selector )) ) {
 			// Speed-up: Sizzle("#ID")
-            // 处理 id 类型选择器，如 #id
+			/*
+			rquickExpr.exec('#test')
+			-> match = ["#test", "test", undefined, undefined, index: 0, input: "#test"]
+			-> match[1] = "test"
+
+			这里处理 id 类型选择器，如 #test
+
+			那么问题来了，selector 为 "#ID" 这种形式不是在 jQuery.fn.init 方法中处理过了吗？
+			怎么会走到这里来呢？
+
+			仔细看 jQuery.fn.init 源码会发现：
+			$("#ID") 这种形式确实在 jQuery.fn.init 中已经处理掉了
+			但是，$("#ID", context) 这种有第二个参数 context 的情况会走这里
+			*/
 			if ( (m = match[1]) ) {
                 // context 为 document
 				if ( nodeType === 9 ) {
-                    // getElementById 方法只能在 document 对象上调用，普通的元素则不行
+                    // getElementById 方法只能在 document 对象上调用，普通的元素没有这个方法
 					elem = context.getElementById( m );
 					// Check parentNode to catch when Blackberry 4.6 returns
 					// nodes that are no longer in the document #6963
@@ -2852,7 +2881,7 @@ function Sizzle( selector, context, results, seed ) {
 					if ( elem && elem.parentNode ) {
 						// Handle the case where IE, Opera, and Webkit return items
 						// by name instead of ID
-                        // 有的浏览器会根据 name 返回，而不是id,所以这里再确认一遍
+                        // 有的浏览器会根据 name 返回，而不是 id，所以这里再确认一遍
 						if ( elem.id === m ) {
 							results.push( elem );
 							return results;
@@ -2864,8 +2893,13 @@ function Sizzle( selector, context, results, seed ) {
                 // Context 不是 document
 				} else {
 					// Context is not a document
-                    // 元素elem必须包含于context，并且元素id确实等于m
-                    // contains 方法确认 elem 是否是 contex 的子元素
+					/*
+					需要同时满足以下 4 个条件：
+					① context.ownerDocument 必须存在，即 document 要存在
+					② document.getElementById( m ) 能获取到元素 elem
+					③ elem 是 context 的子元素
+					④ elem 的 id 值 为 m
+					*/
 					if ( context.ownerDocument && (elem = context.ownerDocument.getElementById( m )) &&
 						contains( context, elem ) && elem.id === m ) {
 						results.push( elem );
@@ -2876,20 +2910,17 @@ function Sizzle( selector, context, results, seed ) {
 			// Speed-up: Sizzle("TAG")
             // 处理 tag 类型选择器，如 div
 			} else if ( match[2] ) {
-                // 如：[].push.apply(this.cnxhData,data)
+                // 和 getElementById 方法不同，普通元素拥有 getElementsByTagName 方法
 				push.apply( results, context.getElementsByTagName( selector ) );
 				return results;
 
 			// Speed-up: Sizzle(".CLASS")
-            // 处理 class 类型选择器，如 .cls
-            // 前提条件是支持 getElementsByClassName 方法
-            // 在div1内选取class为cls的元素：div1.getElementsByClassName('cls')
+            // 处理 class 类型选择器，如 .cls（需要支持 getElementsByClassName 方法）
 			} else if ( (m = match[3]) && support.getElementsByClassName && context.getElementsByClassName ) {
 				push.apply( results, context.getElementsByClassName( m ) );
 				return results;
 			}
 		}
-
 
 		/*
 		说一下 querySelector 和 querySelectorAll
@@ -2901,7 +2932,7 @@ function Sizzle( selector, context, results, seed ) {
 		(2) querySelectorAll VS getElementsBy*
 
 		querySelectorAll 返回的是一个 Static Node List，而 getElementsBy 系列的返回的是一个 Live Node List。
-		返回结果集合后，前者不会自动更新，后者会自动更新。
+		也就是说，返回结果集合后，前者不会自动更新，后者会自动更新。
 
 		eg:
 		// 初始时 dom 中没有 <img> 元素
@@ -2910,22 +2941,17 @@ function Sizzle( selector, context, results, seed ) {
 		document.body.appendChild(new Image())
 		x.length // 0
 		y.length // 1
+		
+		以下的 qSA 就是指 querySelectorAll
 
-		
-		
+		① support.qsa 是指浏览器支持 querySelectorAll
+		② rbuggyQSA 是指 qsa 相关的 bug
+
+		querySelectorAll 可用，并且不会触发 bug，才执行以下 if 语句
 		*/
 		// QSA path
-        // qSA 是指 querySelectorAll
-        // support.qsa 是指浏览器支持 querySelectorAll
-        // rbuggyQSA 是指 qsa 相关的bug
-        // rbuggyQSA = rbuggyQSA.length && new RegExp( rbuggyQSA.join("|") );
-        // qsa 可用，并且不会触发bug，才执行以下if语句
-        // 浏览器支持情况：IE 8+, Firefox 3.5+, Safari 3+, Chrome 4+, and Opera 10+；
-        // querySelector 将返回匹配到的第一个元素，如果没有匹配的元素则返回 Null
-        // querySelectorAll 返回一个包含匹配到的元素的数组，如果没有匹配的元素则返回的数组为空
 		if ( support.qsa && (!rbuggyQSA || !rbuggyQSA.test( selector )) ) {
-			// expando = "sizzle" + -(new Date())
-            // "sizzle-1499319258080"
+			// expando = "sizzle" + -(new Date())，如 "sizzle-1499319258080"
             nid = old = expando;
 			newContext = context;
             // context 为 document，newSelector 值才为 selector，否则为 false
@@ -2935,56 +2961,48 @@ function Sizzle( selector, context, results, seed ) {
 			// We can work around this by specifying an extra ID on the root
 			// and working up from there (Thanks to Andrew Dupont for the technique)
 			// IE 8 doesn't work on object elements
-             /* 这里当前context对象的id的赋值与恢复，是用来修正querySelectorAll的一个BUG 
-             * 该BUG会在某些情况下把当前节点（context）也作为结果返回回来。 
-             * 具体方法是，在现有的选择器前加上一个属性选择器：[id=XXX]， 
-             * XXX 为context的id，若context本身没有设置id，则给个默认值expando。 
-             */
+			/*
+			querySelectorAll 有一个 bug，该 bug 在某些情况下会把当前节点（context）也作为结果返回。
+
+			为了规避这个 bug，我们给选择器前面加上 context 的 id（如果 context 没有 id，加个 id，随后去掉）。
+			比如：
+			原 selector : "str1, str2, str3"
+			新 selector : "[id='contextId'] str1, [id='contextId'] str2, [id='contextId'] str3"
+			*/
             // context 为元素，并且元素标签名不能是 object
 			if ( nodeType === 1 && context.nodeName.toLowerCase() !== "object" ) {
-				// [{value: matched,type: type,matches: match}...]
                 groups = tokenize( selector );
                 
-                // 如果当前 context 有 id 属性
-                // 如果没有id,那么old值就是空了
+                // context 有 id 值
 				if ( (old = context.getAttribute("id")) ) {
-                    // replace 第二个参数为 $& 表示插入与 regexp 匹配的串
-                    // rescape = /'|\\/g
-                    // 单引号或反斜杠前加上一个反斜杠
-                    // nid 为修正后的 id 值
+                    // rescape = /'|\\/g，修正 id 值
 					nid = old.replace( rescape, "\\$&" );
-                // 如果当前 context 没有 id 属性，
-                // 那么给它加一个默认的属性 "sizzle-1499319258080"
-                // 没有id，old为空，下文会把这里加上的属性给删掉的
+                // context 没有 id 属性，加个属性 "sizzle-1499319258080"
 				} else {
 					context.setAttribute( "id", nid );
 				}
+				// 注意末尾有一个空格
 				nid = "[id='" + nid + "'] ";
 
 				i = groups.length;
 				while ( i-- ) {
-                    // 原选择器：div > p + div.aaron
-                    // 变成 groups[5]: [id="id5"].aaron
-                    // 变成 groups[4]: [id="id4"]div
-                    // 变成 groups[3]: [id="id3"]p
-                    // 大概是这样
+					// 新生成一组选择器字符串。每个选择器字符串以 "[id='contextId'] " 这种形式开头
 					groups[i] = nid + toSelector( groups[i] );
 				}
-                // rsibling = new RegExp( whitespace + "*[+~]" )
-                // rsibling用于判定选择器是否存在兄弟关系符 
-                // 若包含 + ~ 符号，则取context的父节点取代当前节点 
+				/*
+				rsibling = new RegExp( whitespace + "*[+~]" ) 用于判定选择器是否存在兄弟关系符 
+				
+				① 若包含 + ~ 符号，则取 context 的父节点作为上下文
+				② 否则，context 不变
+				*/
 				newContext = rsibling.test( selector ) && context.parentNode || context;
-				// 大概是这种形式：
-                //  [id="id0"]div,[id="id1"]p,[id="id2"]div,[id="id3"].aaron
                 newSelector = groups.join(",");
 			}
 
 			if ( newSelector ) {
                  /* 
-                 * 这里之所以需要用try...catch， 
-                 * 是因为jquery所支持的一些选择器是querySelectorAll所不支持的， 
-                 * 当使用这些选择器时，querySelectorAll会报非法选择器， 
-                 * 故需要jquery自身去实现。 
+                 这里之所以需要用 try...catch，是因为 jquery 所支持的某些选择器是 querySelectorAll 所不支持的， 
+                 当使用这些选择器时，querySelectorAll 会报非法选择器，故需要 jquery 自身去实现。 
                  */ 
 				try {
 					push.apply( results,
@@ -2993,7 +3011,12 @@ function Sizzle( selector, context, results, seed ) {
 					return results;
 				} catch(qsaError) {
 				} finally {
-                    // 本来没有id的元素加上了id，这里要删掉
+					/*
+					本来没有 id 的元素加上了 id，这里要删掉
+
+					old = expando 怎么会为 false 呢，是因为这一句给 old 重新赋值了
+					if ( (old = context.getAttribute("id")) ) {}
+					*/
 					if ( !old ) {
 						context.removeAttribute("id");
 					}
@@ -3003,17 +3026,12 @@ function Sizzle( selector, context, results, seed ) {
 	}
 
 	// All others
-    // 低级浏览器，不能用原生的getElementById、querySelectorAll等方法选取元素
-    // 只能 select 方法来获取结果
-     // 除上述快捷方式和调用querySelectorAll方式直接获取结果外，其余都需调用select来获取结果  
     /* 
-     * rtrim = new RegExp("^" + whitespace + "+|((?:^|[^\\\\])(?:\\\\.)*)" 
-     *          + whitespace + "+$", "g"), 
-     * whitespace = "[\\x20\\t\\r\\n\\f]"; 
-     即：rtrim /^[\x20\t\r\n\f]+|((?:^|[^\\])(?:\\.)*)[\x20\t\r\n\f]+$/g
-     * 上述rtrim正则表达式的作用是去掉selector两边的空白，空白字符由whitespace变量定义 
-     * rtrim的效果与new RegExp("^" + whitespace + "+|" + whitespace + "+$", "g")相似 
-     */  
+	 seed 存在或不支持 querySelectorAll 等方法用 select 方法来获取结果
+
+     rtrim /^[\x20\t\r\n\f]+|((?:^|[^\\])(?:\\.)*)[\x20\t\r\n\f]+$/g
+     selector.replace( rtrim, "$1" ) 作用是去掉 selector 两边的空白
+    */  
 	return select( selector.replace( rtrim, "$1" ), context, results, seed );
 }
 
@@ -3084,6 +3102,7 @@ function markFunction( fn ) {
  * Support testing using an element
  * @param {Function} fn Passed the created div and expects a boolean result
  */
+ // 以布尔值的形式返回 fn(div)
 function assert( fn ) {
 	var div = document.createElement("div");
 
@@ -3275,7 +3294,9 @@ setDocument = Sizzle.setDocument = function( node ) {
 
 	// ID find and filter
 	if ( support.getById ) {
+		// 在上下文 context 中找 id 值为 id 的元素，返回值为数组
 		Expr.find["ID"] = function( id, context ) {
+			// 其中 strundefined = typeof undefined
 			if ( typeof context.getElementById !== strundefined && documentIsHTML ) {
 				var m = context.getElementById( id );
 				// Check parentNode to catch when Blackberry 4.6 returns
@@ -3283,7 +3304,9 @@ setDocument = Sizzle.setDocument = function( node ) {
 				return m && m.parentNode ? [m] : [];
 			}
 		};
+		// eg : Expr.filter["ID"]('id1')(elem) 当元素 elem 的 id 值为 id1 返回 true，否则返回 false
 		Expr.filter["ID"] = function( id ) {
+			// 修正 id 属性值（将 Unicode 码点转成相应字符）
 			var attrId = id.replace( runescape, funescape );
 			return function( elem ) {
 				return elem.getAttribute("id") === attrId;
@@ -3304,12 +3327,15 @@ setDocument = Sizzle.setDocument = function( node ) {
 	}
 
 	// Tag
+	// support.getElementsByTagName 用来检测 getElementsByTagName(*) 是否只返回元素节点，有的浏览器除了返回与元素，还返回注释
 	Expr.find["TAG"] = support.getElementsByTagName ?
+		// getElementsByTagName(*) 只返回元素节点，不包括注释，理想情况
 		function( tag, context ) {
 			if ( typeof context.getElementsByTagName !== strundefined ) {
 				return context.getElementsByTagName( tag );
 			}
 		} :
+		// getElementsByTagName(*) 除了返回元素节点，还包括注释，所以需要对 tag === "*" 做特殊处理
 		function( tag, context ) {
 			var elem,
 				tmp = [],
@@ -3689,11 +3715,7 @@ Expr = Sizzle.selectors = {
 
 	find: {},
 
-    // 一个节点和另一个节点的关系无非以下几种：
-    // 父亲和儿子、祖宗和后代、临近兄弟、普通兄弟
-    // 分别对应的选择符是：> 空格 + ~
-    // 其实还有一种关系：div.clr 表示class为clr的div节点
-    // first 表示紧密程度
+	// 4 种关系，其中 first 表示紧密程序，“父子关系” 和 “相邻兄弟关系” 是紧密的
 	relative: {
 		">": { dir: "parentNode", first: true },
 		" ": { dir: "parentNode" },
@@ -4265,6 +4287,32 @@ Expr.setFilters = new setFilters();
 ② 否则，最后返回值为一个二维数组，例如： [[token,token],[token,token,tokens],[token,token,tokens,tokens]]
 
 其中 token 类型有：TAG, ID, CLASS, ATTR, CHILD, PSEUDO, >, +, 空格, ~
+
+举个例子：
+
+tokenize('div p + .clr [type=checkbox], #box p,div + span')
+-> [Array(7), Array(3), Array(3)]
+
+Array(7) , Array(3), Array(3) 分别为：
+[
+	{value: "div", type: "TAG", matches: ["div"]},
+	{value: " ", type: " "},
+	{value: "p", type: "TAG", matches: ["p"]},
+	{value: " + ", type: "+"},
+	{value: ".clr", type: "CLASS", matches: ["clr"]},
+	{value: " ", type: " "},
+	{value: "[type=checkbox]", type: "ATTR", matches: ["type", "=", "checkbox"]}
+],
+[
+	{value: "#box", type: "ID", matches:["box"]},
+	{value: " ", type: " "},
+	{value: "p", type: "TAG", matches: ["p"]}
+],
+[
+	{value: "div", type: "TAG", matches: ["div"]},
+	{value: " + ", type: "+"},
+	{value: "span", type: "TAG", matches: ["span"]}
+]
 */
 function tokenize( selector, parseOnly ) {
 	var matched, match, tokens, type,
@@ -4486,8 +4534,7 @@ function tokenize( selector, parseOnly ) {
 			tokenCache( selector, groups ).slice( 0 );
 }
 
-// 将 token 中的 value 连起来，返回一个字符串
-// 如 div + p > span.cls
+// 将 token 中的 value 连起来，返回一个字符串。相当于 tokenize 方法的逆操作。
 function toSelector( tokens ) {
 	var i = 0,
 		len = tokens.length,
@@ -4910,110 +4957,123 @@ selector："div > p + div.aaron input[type="checkbox"]"
 
 解析规则：
 1 按照从右到左
-2 取出最后一个token  比如[type="checkbox"]
-                            {
-                                matches : [
-                                   0: "type"
-                                   1: "="
-                                   2: "checkbox"
-                                ],
-                                type    : "ATTR",
-                                value   : "[type="checkbox"]"
-                            }
-3 过滤类型 如果type是 > + ~ 空 四种关系选择器中的一种，则跳过，在继续过滤
+2 取出最后一个token  比如[type="checkbox"] 对应的 token 为：
+
+tokenize('div p + .clr [type=checkbox], #box p,div + span')
+-> [[
+	{value: "div", type: "TAG", matches: ["div"]},
+	{value: " ", type: " "},
+	{value: "p", type: "TAG", matches: ["p"]},
+	{value: " + ", type: "+"},
+	{value: ".clr", type: "CLASS", matches: ["clr"]},
+	{value: " ", type: " "},
+	{value: "[type=checkbox]", type: "ATTR", matches: ["type", "=", "checkbox"]}
+],
+[
+	{value: "#box", type: "ID", matches:["box"]},
+	{value: " ", type: " "},
+	{value: "p", type: "TAG", matches: ["p"]}
+],
+[
+	{value: "div", type: "TAG", matches: ["div"]},
+	{value: " + ", type: "+"},
+	{value: "span", type: "TAG", matches: ["span"]}
+]]
+3 过滤类型 如果 type 是 > + ~ 空 四种关系选择器中的一种，则跳过，再继续过滤
 4 直到匹配到为 ID,CLASS,TAG  中一种 , 因为这样才能通过浏览器的接口索取
-  （从右往左匹配，但是右边第一个是"[type="checkbox"]"，Expr.find不认识这种选择器，跳过，继续向左）
-5 此时seed种子合集中就有值了,这样把刷选的条件给缩的很小了
-6 如果匹配的seed的合集有多个就需要进一步的过滤了,修正选择器 selector: "div > p + div.aaron [type="checkbox"]"
-7 OK,跳到一下阶段的编译函数
+  （从右往左匹配，但是右边第一个是 "[type="checkbox"]" ，Expr.find 不认识这种选择器，跳过，继续向左）
+5 此时 seed 就有值了，这样把刷选的条件给缩的很小了
+6 如果匹配的 seed 有多个就需要进一步的过滤了，修正选择器 selector: "div > p + div.aaron [type="checkbox"]"
+7 最后，跳到一下阶段的编译函数
  */
 function select( selector, context, results, seed ) {
 	var i, tokens, token, type, find,
-        // 将 selector token 化
-        // 如 [[{value: matched,type: type,matches: match}...]...]
+		/*
+		tokenize('#box p') 
+		-> [[
+			{value: "#box", type: "ID", matches:["box"]},
+			{value: " ", type: " "},
+			{value: "p", type: "TAG", matches: ["p"]}
+		]]
+
+		结果为一个二维数组
+		*/
 		match = tokenize( selector );
 
-    // 最后一个选择器不是 id、class、tag 等，没有匹配出最终的种子元素
+	// 以下的代码块的作用是选出种子元素集合，最终的结果一定在种子元素集合中产生
 	if ( !seed ) {
 		// Try to minimize operations if there is only one group
         // 如果选择器里没有逗号，则只有一组
 		if ( match.length === 1 ) {
 
 			// Take a shortcut and set the context if the root selector is an ID
-            // 为什么要这么做？直接赋值 tokens = match[0] 不行吗？？
+            // tokens 组成的一维数组
             tokens = match[0] = match[0].slice( 0 );
-            // 满足以下几个条件：
-            // 1.tokens有三个以上的选择器
-            // 2.第一个选择器是 id 选择器
-            // 3.支持 getElementById 方法
-            // 4.context 为 document
-            // 5.当前文档是 html 类型
-            // 6.第二个选择器的类型是（空格 + > ~）其中之一
+			/*
+            同时满足以下几个条件：
+            ① 有三个以上的 token 
+            ② 第一个选择器是 id 选择器
+            ③ 支持 getElementById 方法
+            ④ context 为 document
+            ⑤ 当前文档是 html 类型
+            ⑥ 第二个选择器的类型是（空格 + > ~）其中之一
+			*/
 			if ( tokens.length > 2 && (token = tokens[0]).type === "ID" &&
 					support.getById && context.nodeType === 9 && documentIsHTML &&
 					Expr.relative[ tokens[1].type ] ) {
                 
-                // 在 context 中选取特定 id 的元素
-                /* Expr.find["ID"] = function( id, context ) {
-                    if ( typeof context.getElementById !== strundefined && documentIsHTML ) {
-                        var m = context.getElementById( id );
-                        // Check parentNode to catch when Blackberry 4.6 returns
-                        // nodes that are no longer in the document #6963
-                        return m && m.parentNode ? [m] : [];
-                    }
-                };
-                */
-                // runescape = /\\([\da-f]{1,6}[\x20\t\r\n\f]?|([\x20\t\r\n\f])|.)/gi
-                // funescape 是一个函数
-                // 将当前 context 指向第一个 id 选择器指定的节点
+  
+                // 将 context 修正为 id 选择器指定的节点，缩写查找范围（Expr.find["ID"] 方法返回值是数组）
                 context = ( Expr.find["ID"]( token.matches[0].replace(runescape, funescape), context ) || [] )[0];
 				// 对于 []，[][0] （context）值为 undefined
                 if ( !context ) {
 					return results;
 				}
-                // 从原选择器字符串中丢掉最开始的id选择器
+                // 从原选择器字符串中丢掉这个 id 选择器
 				selector = selector.slice( tokens.shift().value.length );
 			}
 
 			// Fetch a seed set for right-to-left matching
-            // (?=exp)	匹配exp前面的位置
-            // matchExpr["needsContext"] = new RegExp( "^" + whitespace + "*[>+~]|:(even|odd|eq|gt|lt|nth|first|last)(?:\\(" + whitespace + "*((?:-\\d)?\\d*)" + whitespace + "*\\)|)(?=[^-]|$)", "i" )
-            // 1. > + ~ 三种关系符
-            // 2. :even、:odd、:eq、:gt、:lt、:nth、:first、:last八种伪类 
-            
-            // test 返回 true 或 false
-            // 如果没有伪类或关系符，从最后一条规则开始，先找出seed集合
+			/*
+			matchExpr["needsContext"] = new RegExp( "^" + whitespace + "*[>+~]|:(even|odd|eq|gt|lt|nth|first|last)(?:\\(" + whitespace + "*((?:-\\d)?\\d*)" + whitespace + "*\\)|)(?=[^-]|$)", "i" )
+            以下两类通过匹配：
+			① > + ~ 三种关系符
+            ② :even、:odd、:eq、:gt、:lt、:nth、:first、:last 等八种伪类 
+			*/
             i = matchExpr["needsContext"].test( selector ) ? 0 : tokens.length;
 			// 从后边的规则开始
             while ( i-- ) {
-                // 最后一个token
 				token = tokens[i];
 
 				// Abort if we hit a combinator
                 // 遇到（空格 + > ~）跳出结束循环
-                // 这样就没找到合适的seed，后续只能整个dom中去扫描了
 				if ( Expr.relative[ (type = token.type) ] ) {
 					break;
 				}
-                // Expr.find["TAG"] 通过原生的 getElementsByTagName 方法选取元素；
-                // Expr.find["CLASS"] 如果支持 getElementsByClassName ，则用该方法选取元素
-				// 这里的find是一个方法，根据类型返回相应的方法
+
+				/*
+				Expr.find["ID"](id, context)			  返回一个数组，元素是 context 中 id 值为 id 的元素
+				Expr.find["TAG"]( tag, context )		  返回一个数组，元素是 context 中 标签名为 tag 的元素
+				Expr.find["CLASS"]( className, context )  返回一个数组，元素是 context 中 class 名为 className 的元素
+				
+				type 必须是 "ID"、"TAG"、"CLASS" 三者之一才能进入以下的 if 块
+				*/
                 if ( (find = Expr.find[ type ]) ) {
 					// Search, expanding context for leading sibling combinators
+					// seed 是原生 dom 元素组成的数组，也就是说最终的结果一定在这个集合里
 					if ( (seed = find(
+						// id 或 class 或 tag 值
 						token.matches[0].replace( runescape, funescape ),
-                        // rsibling = new RegExp(whitespace + "*[+~]") 
-                        // 如果是兄弟节点，则 context 替换为 context.parentNode
+						/*
+						rsibling = new RegExp(whitespace + "*[+~]") 
+                        如果 tokens[0].type 是 + 或 ~ 的情况，即兄弟节点，则 context 修正为 context.parentNode
+						*/
 						rsibling.test( tokens[0].type ) && context.parentNode || context
 					)) ) {
-
-                         // 如果找到了节点，赋值给 seed
-
 						// If seed is empty or no tokens remain, we can return early
-						// 删除当前token
-                        // 之所以不是删除最后token，是因为最后可能是属性token等，这是会跳过的
+						// 删除当前 token
                         tokens.splice( i, 1 );
-                        // 剩余的选择符
+                        // 剩余的 token 重新组合成 selector 字符串
 						selector = seed.length && toSelector( tokens );
                          // 如果 seed 为空或者没有剩余选择符，不再继续了
 						if ( !selector ) {
@@ -5031,21 +5091,18 @@ function select( selector, context, results, seed ) {
 
 	// Compile and execute a filtering function
 	// Provide `match` to avoid retokenization if we modified the selector above
-	// 交由compile来生成一个称为终极匹配器
-    // 通过这个匹配器过滤seed，把符合条件的结果放到results里边
-    /* 先执行compile(selector, match)，它会返回一个“预编译”函数， 
-     * 然后调用该函数获取最后匹配结果 
-     */  
-    // compile()()
-    // 生成编译函数：
-    // var superMatcher = compile( selector, match );
-    /* superMatcher(
+    /*
+	生成编译函数:
+	var superMatcher = compile( selector, match );
+	superMatcher(
 		seed,
 		context,
 		!documentIsHTML,
 		results,
 		rsibling.test( selector )
 	);
+
+	seed 是种子，也就是说，最终选出的元素一定是在这个集合里产生
     */
     compile( selector, match )(
 		seed,
@@ -11123,7 +11180,7 @@ jQuery.fn.extend({
 			$.fn.filter = function ( selector ) {
 				return this.pushStack( winnow(this, selector || [], false) );
 			}
-			作用：过滤 this 这个对象，然后将链式调用的驱动对象指为过滤后的对象
+			作用：过滤 jQuery( selector ) 这个对象，然后返回一个新的 jQuery 对象
 			*/
 			return this.pushStack( jQuery( selector ).filter(function() {
 				/*
@@ -11142,15 +11199,15 @@ jQuery.fn.extend({
 		// 参数为字符串，调用静态方法 jQuery.find
 		for ( i = 0; i < len; i++ ) {
 			/*
-			 jQuery.find 函数将在当前 self[ i ] 的
-			 所有后代元素中筛选符合指定表达式 selector 的元素组成的 JQ 对象
-			 ret 存放结果
+			 jQuery.find = Sizzle，jQuery.find 就是对 Sizzle 函数的引用
+			 jQuery.find 函数将当前 self[ i ] 的所有后代元素中筛选符合指定表达式 selector 的元素
+			 ret 数组存放结果
 			*/
 			jQuery.find( selector, self[ i ], ret );
 		}
 
 		// Needed because $( selector, context ) becomes $( context ).find( selector )
-		// 将链式调用的驱动 JQ 对象交给 ret
+		// ret 是一个数组，这里转成 jQuery 对象
 		ret = this.pushStack( len > 1 ? jQuery.unique( ret ) : ret );
 		ret.selector = this.selector ? this.selector + " " + selector : selector;
 		return ret;
