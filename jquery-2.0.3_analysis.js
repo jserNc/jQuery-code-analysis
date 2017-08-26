@@ -2441,9 +2441,8 @@ var i,
 	preferredDoc = window.document,
 	dirruns = 0,
 	done = 0,
+    // 可以以 classCache(key,value)、tokenCache(key,value)、compilerCache(key,value) 的方式存储键值对
 	classCache = createCache(),
-    // 词法分析需要的缓存器
-    // 可以 tokenCache(key,value) 方式存储键值对
 	tokenCache = createCache(),
 	compilerCache = createCache(),
 	hasDuplicate = false,
@@ -5176,6 +5175,7 @@ if ( !assert(function( div ) {
 	});
 }
 
+// 把 Sizzle 的属性和方法赋给 jQuery 对象
 jQuery.find = Sizzle;
 jQuery.expr = Sizzle.selectors;
 jQuery.expr[":"] = jQuery.expr.pseudos;
