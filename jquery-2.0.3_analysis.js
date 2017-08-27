@@ -2731,7 +2731,7 @@ Sizzle 把复杂选择器表达式，拆成一个个【块表达式】和【块间关系】
 Sizzle 以【块表达式】为单位进行解析，而且顺序是 “从右到左”，也就是说先分析右边的【块表达式】，再分析左边的【块表达式】
 至于为什么要 “从右到左”，而不是 “从左到右” 。想想 dom 树形结构就很容易理解了，从子节点向上找某个祖先节点容易，但是从祖先节点找到某个后代节点可不那么容易。
 
-不过，也有例外，以 $(".content > p:first")：
+不过，也有例外，位置伪类是 “从由到左” 解析是不行的。以 $(".content > p:first")：
 
 <div>
 	<p>aa</p> 
@@ -2751,15 +2751,13 @@ a. 根据 p:first 找到 <p>aa</p>
 b. 然后验证 <p>aa</p> 的父元素的 class 是不是 content
 c. 父元素 class 不是 content，返回 null
 
+这个结果明显是不对的。
+
 所以：
 ① 一般情况下，都是 “从右向左” 解析
 ② 遇到位置伪类就 “从左到右” 解析
 ③ 如果选择器表达式的最左边存在 #id 选择器，也会 “从左到右” 解析
  （首先对最左边进行查询，并将其作为下一步的执行上下文，达到缩小查找范围的目的）
-
-
-
-所以，除了位置伪类是 “从左到右” 解析，其他情况都是 “从右向左” 解析。
 
 
 Sizzle 整体结构：
@@ -5035,7 +5033,7 @@ function select( selector, context, results, seed ) {
 			// Fetch a seed set for right-to-left matching
 			/*
 			matchExpr["needsContext"] = new RegExp( "^" + whitespace + "*[>+~]|:(even|odd|eq|gt|lt|nth|first|last)(?:\\(" + whitespace + "*((?:-\\d)?\\d*)" + whitespace + "*\\)|)(?=[^-]|$)", "i" )
-            以下两类通过匹配：
+            以下两类通过匹配（也就是说以下两类不会进入下面的 while 循环）：
 			① > + ~ 三种关系符
             ② :even、:odd、:eq、:gt、:lt、:nth、:first、:last 等八种伪类 
 			*/
