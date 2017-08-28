@@ -3186,16 +3186,32 @@ function createButtonPseudo( type ) {
  * Returns a function to use in pseudos for positionals
  * @param {Function} fn
  */
+ // 位置伪类。这里的 fn 可以为：Expr.pseudos["first"|"last"|"eq"|"even"|"odd"|"lt"|"gt"|]
 function createPositionalPseudo( fn ) {
+	// markFunction(func) 给 func 函数添加一个 expando 属性，起到标记该函数的作用
 	return markFunction(function( argument ) {
 		argument = +argument;
 		return markFunction(function( seed, matches ) {
 			var j,
+				/*
+				例：
+				Expr.pseudos.eq: createPositionalPseudo(function( matchIndexes, length, argument ) {
+					return [ argument < 0 ? argument + length : argument ];
+				})
+				
+				fn( [], seed.length, argument ) 会返回索引组成的数组
+				*/
 				matchIndexes = fn( [], seed.length, argument ),
 				i = matchIndexes.length;
 
 			// Match elements found at the specified indexes
 			while ( i-- ) {
+				/*
+				① j = matchIndexes[i]
+				② 如果 seed[j] 存在
+				   a. matches[j] = seed[j]
+				   b. seed[j] = !seed[j]
+				*/
 				if ( seed[ (j = matchIndexes[i]) ] ) {
 					seed[j] = !(matches[j] = seed[j]);
 				}
@@ -3894,7 +3910,10 @@ Expr = Sizzle.selectors = {
 	},
 
 	filter: {
-
+		/*
+		① nodeNameSelector 为 "*"，即 Expr.filter["TAG"]("*")(elem)，一直返回 true；
+		② 否则，Expr.filter["TAG"](nodeNameSelector)(elem)，当 elem.nodeName.toLowerCase() === nodeNameSelector 才返回 true
+		*/
 		"TAG": function( nodeNameSelector ) {
 			var nodeName = nodeNameSelector.replace( runescape, funescape ).toLowerCase();
 			return nodeNameSelector === "*" ?
@@ -3903,28 +3922,46 @@ Expr = Sizzle.selectors = {
 					return elem.nodeName && elem.nodeName.toLowerCase() === nodeName;
 				};
 		},
-
+		/*
+		① 如果 classCache 缓存里有 className 对应的函数，直接用这个函数
+		② 否则，新建并返回一个函数 Expr.filter["CLASS"](className)(elem)，当 elem 的 class 中有 className 时，返回 true
+		*/
 		"CLASS": function( className ) {
+			/*
+			classCache = createCache()
+			① 存数据：classCache('a','b') 
+			② 取数据：classCache('a ')
+			*/
 			var pattern = classCache[ className + " " ];
-
+			/*
+			以 className 为 cls 为例：
+			pattern = new RegExp( "(^|" + whitespace + ")" + className + "(" + whitespace + "|$)" )
+			-> pattern = /(^|[\x20\t\r\n\f])cls([\x20\t\r\n\f]|$)/
+			*/
 			return pattern ||
 				(pattern = new RegExp( "(^|" + whitespace + ")" + className + "(" + whitespace + "|$)" )) &&
 				classCache( className, function( elem ) {
 					return pattern.test( typeof elem.className === "string" && elem.className || typeof elem.getAttribute !== strundefined && elem.getAttribute("class") || "" );
 				});
 		},
+		/*
+		对于选择器：[type="checkbox"]
+		name : "type" , operator : "=" , check : "checkbox"
 
+		根据属性值片段 check 和属性值 result 的关系返回相应结果
+		*/
 		"ATTR": function( name, operator, check ) {
 			return function( elem ) {
 				var result = Sizzle.attr( elem, name );
-
+				
 				if ( result == null ) {
 					return operator === "!=";
 				}
 				if ( !operator ) {
 					return true;
 				}
-
+				
+				// result 强制转为字符串
 				result += "";
 
 				return operator === "=" ? result === check :
@@ -3932,7 +3969,9 @@ Expr = Sizzle.selectors = {
 					operator === "^=" ? check && result.indexOf( check ) === 0 :
 					operator === "*=" ? check && result.indexOf( check ) > -1 :
 					operator === "$=" ? check && result.slice( -check.length ) === check :
+					// eg：lang~=en 匹配 <html lang="zh_CN en">
 					operator === "~=" ? ( " " + result + " " ).indexOf( check ) > -1 :
+					// eg：lang=|en 匹配 <html lang="en-US">
 					operator === "|=" ? result === check || result.slice( 0, check.length + 1 ) === check + "-" :
 					false;
 			};
@@ -4033,6 +4072,11 @@ Expr = Sizzle.selectors = {
 			// Prioritize by case sensitivity in case custom pseudos are added with uppercase letters
 			// Remember that setFilters inherits from pseudos
 			var args,
+				/*
+				function setFilters() {}
+				setFilters.prototype = Expr.filters = Expr.pseudos;
+				Expr.setFilters = new setFilters();
+				*/
 				fn = Expr.pseudos[ pseudo ] || Expr.setFilters[ pseudo.toLowerCase() ] ||
 					Sizzle.error( "unsupported pseudo: " + pseudo );
 
@@ -4094,13 +4138,15 @@ Expr = Sizzle.selectors = {
 					return !results.pop();
 				};
 		}),
-
+		
+		// 包含选择器 selector 对应的节点
 		"has": markFunction(function( selector ) {
 			return function( elem ) {
 				return Sizzle( selector, elem ).length > 0;
 			};
 		}),
 
+		// 包含文本 text
 		"contains": markFunction(function( text ) {
 			return function( elem ) {
 				return ( elem.textContent || elem.innerText || getText( elem ) ).indexOf( text ) > -1;
@@ -4218,18 +4264,19 @@ Expr = Sizzle.selectors = {
 		},
 
 		// Position-in-collection
+		// 索引为第一个
 		"first": createPositionalPseudo(function() {
 			return [ 0 ];
 		}),
-
+		// 索引为最后一个
 		"last": createPositionalPseudo(function( matchIndexes, length ) {
 			return [ length - 1 ];
 		}),
-
+		// 索引为 argument（兼容负数情况）
 		"eq": createPositionalPseudo(function( matchIndexes, length, argument ) {
 			return [ argument < 0 ? argument + length : argument ];
 		}),
-
+		// 索引为偶数
 		"even": createPositionalPseudo(function( matchIndexes, length ) {
 			var i = 0;
 			for ( ; i < length; i += 2 ) {
@@ -4237,7 +4284,7 @@ Expr = Sizzle.selectors = {
 			}
 			return matchIndexes;
 		}),
-
+		// 索引为奇数
 		"odd": createPositionalPseudo(function( matchIndexes, length ) {
 			var i = 1;
 			for ( ; i < length; i += 2 ) {
@@ -4245,7 +4292,7 @@ Expr = Sizzle.selectors = {
 			}
 			return matchIndexes;
 		}),
-
+		// 小于 argument 的索引
 		"lt": createPositionalPseudo(function( matchIndexes, length, argument ) {
 			var i = argument < 0 ? argument + length : argument;
 			for ( ; --i >= 0; ) {
@@ -4253,7 +4300,7 @@ Expr = Sizzle.selectors = {
 			}
 			return matchIndexes;
 		}),
-
+		// 大于 argument 的索引
 		"gt": createPositionalPseudo(function( matchIndexes, length, argument ) {
 			var i = argument < 0 ? argument + length : argument;
 			for ( ; ++i < length; ) {
@@ -4542,21 +4589,36 @@ function toSelector( tokens ) {
 	return selector;
 }
 
+/*
+matcher 是一个函数
+combinator 是以下 4 个 json 对象之一：
+	relative = {
+	  ">": { dir: "parentNode", first: true },
+	  " ": { dir: "parentNode" },
+	  "+": { dir: "previousSibling", first: true },
+	  "~": { dir: "previousSibling" }
+	}
+base 是 true 或 undefined
+*/
 function addCombinator( matcher, combinator, base ) {
 	var dir = combinator.dir,
 		checkNonElements = base && dir === "parentNode",
+		// done 的初始值为 0
 		doneName = done++;
 
+	// > 和 + 两种关系运算符（紧密的）
 	return combinator.first ?
 		// Check against closest ancestor/preceding element
 		function( elem, context, xml ) {
 			while ( (elem = elem[ dir ]) ) {
 				if ( elem.nodeType === 1 || checkNonElements ) {
+					// 既然是紧密节点，找到了第一个就要做决断，成就成，不成就不成
 					return matcher( elem, context, xml );
 				}
 			}
 		} :
-
+		
+		// 空格 和 ~ 两种关系运算符
 		// Check against all ancestor/preceding elements
 		function( elem, context, xml ) {
 			var data, cache, outerCache,
@@ -4565,6 +4627,7 @@ function addCombinator( matcher, combinator, base ) {
 			// We can't set arbitrary data on XML nodes, so they don't benefit from dir caching
 			if ( xml ) {
 				while ( (elem = elem[ dir ]) ) {
+					// 以祖先关系为例，只要有一个祖先满足要求就好了。当然了，如果所有的祖先都不满足，那就只能是 undefined（false）了
 					if ( elem.nodeType === 1 || checkNonElements ) {
 						if ( matcher( elem, context, xml ) ) {
 							return true;
@@ -4592,11 +4655,18 @@ function addCombinator( matcher, combinator, base ) {
 		};
 }
 
+/*
+① matchers 长度为 1，返回 matchers[0]；
+② matchers 长度大于 1，返回一个新的函数
+   新的函数执行时会依次执行每一个 matchers[i]，只要有一个返回 false，最终结果就是 false
+*/
 function elementMatcher( matchers ) {
 	return matchers.length > 1 ?
 		function( elem, context, xml ) {
 			var i = matchers.length;
+			// 从右到左
 			while ( i-- ) {
+				// 只要有一个 matcher 执行结果是 false，那就说明当前节点 elem 不符合要求
 				if ( !matchers[i]( elem, context, xml ) ) {
 					return false;
 				}
@@ -4720,24 +4790,32 @@ function setMatcher( preFilter, selector, matcher, postFilter, postFinder, postS
 	});
 }
 
+// 参数为 token 组成的一维数组，返回一组匹配器
 function matcherFromTokens( tokens ) {
 	var checkContext, matcher, j,
 		len = tokens.length,
+		// 第一个 token 如果是 > + ~ 空格 四者之一则 leadingRelative 为相应的 json 对象，否则为 undefined
 		leadingRelative = Expr.relative[ tokens[0].type ],
+		// 如果 leadingRelative 为 undefined，则返回 Expr.relative[" "]
 		implicitRelative = leadingRelative || Expr.relative[" "],
+		// 如果 leadingRelative 有值，说明最开头的 token 是 4 个关系运算符之一，则跳过这个 token
 		i = leadingRelative ? 1 : 0,
 
 		// The foundational matcher ensures that elements are reachable from top-level context(s)
+		// elem 需和 context 全等
 		matchContext = addCombinator( function( elem ) {
 			return elem === checkContext;
 		}, implicitRelative, true ),
+		// elem 和 contexts 其中之一全等即可
 		matchAnyContext = addCombinator( function( elem ) {
 			return indexOf.call( checkContext, elem ) > -1;
 		}, implicitRelative, true ),
 		matchers = [ function( elem, context, xml ) {
 			return ( !leadingRelative && ( xml || context !== outermostContext ) ) || (
 				(checkContext = context).nodeType ?
+					// 如果 context 是一个元素，那就得全匹配
 					matchContext( elem, context, xml ) :
+					// 如果 context 是一组元素，那就匹配这一组元素其中一个就好了
 					matchAnyContext( elem, context, xml ) );
 		} ];
 
@@ -4745,9 +4823,44 @@ function matcherFromTokens( tokens ) {
 		if ( (matcher = Expr.relative[ tokens[i].type ]) ) {
 			matchers = [ addCombinator(elementMatcher( matchers ), matcher) ];
 		} else {
+			/*
+			tokenize('div:eq(3)')
+			-> [[
+				{value: "div", type: "TAG", matches: ["div"]}
+				{value: ":eq(3)", type: "PSEUDO", matches: ["eq", "3"]}
+			]]
+
+			① 以 token = {value: "div", type: "TAG", matches: ["div"]} 为例：
+			matcher = Expr.filter[ "TAG" ].apply( null, "div" )
+			-> matcher = function( elem ) {
+				return elem.nodeName && elem.nodeName.toLowerCase() === "div";
+			}
+
+			② 以 token = {value: ":eq(3)", type: "PSEUDO", matches: ["eq", "3"]} 为例：
+			matcher = Expr.filter[ "PSEUDO" ].apply( null, ["eq", "3"] )
+			-> matcher = Expr.pseudos[ "eq" ]["3"]
+			-> matcher = markFunction(function( seed, matches ) {
+				var j,
+					matchIndexes = [3],
+					i = matchIndexes.length;
+
+				while ( i-- ) {
+					if ( seed[ (j = matchIndexes[i]) ] ) {
+						seed[j] = !(matches[j] = seed[j]);
+					}
+				}
+			});
+			-> matcher = markFunction(function( seed, matches ) {
+					if ( seed[3] ) {
+						matches[3] = seed[3];
+						seed[3] = !seed[3];
+					}
+			});
+			*/
 			matcher = Expr.filter[ tokens[i].type ].apply( null, tokens[i].matches );
 
 			// Return special upon seeing a positional matcher
+			// 位置伪类
 			if ( matcher[ expando ] ) {
 				// Find the next relative operator (if any) for proper handling
 				j = ++i;
@@ -4775,20 +4888,27 @@ function matcherFromTokens( tokens ) {
 	return elementMatcher( matchers );
 }
 
+// elementMatchers 和 setMatchers 都是数组
 function matcherFromGroupMatchers( elementMatchers, setMatchers ) {
 	// A counter to specify which element is currently being matched
 	var matcherCachedRuns = 0,
 		bySet = setMatchers.length > 0,
 		byElement = elementMatchers.length > 0,
+		// 超级匹配器
 		superMatcher = function( seed, context, xml, results, expandContext ) {
 			var elem, j, matcher,
 				setMatched = [],
 				matchedCount = 0,
 				i = "0",
+				// 如果没有 seed，就是 []
 				unmatched = seed && [],
 				outermost = expandContext != null,
 				contextBackup = outermostContext,
 				// We must always have either seed elements or context
+				/*
+				① 如果有种子集合 seed 就用这个种子集合作为备选节点
+				② 否则把 context 下所有节点当做备选节点
+				*/
 				elems = seed || byElement && Expr.find["TAG"]( "*", expandContext && context.parentNode || context ),
 				// Use integer dirruns iff this is the outermost matcher
 				dirrunsUnique = (dirruns += contextBackup == null ? 1 : Math.random() || 0.1);
@@ -4876,19 +4996,24 @@ function matcherFromGroupMatchers( elementMatchers, setMatchers ) {
 		superMatcher;
 }
 
+// 这里的 group = tokenize( selector ) 是一个二维数组
 compile = Sizzle.compile = function( selector, group /* Internal Use Only */ ) {
 	var i,
 		setMatchers = [],
 		elementMatchers = [],
+		// 读取缓存
 		cached = compilerCache[ selector + " " ];
 
+	// 没有缓存才走这里
 	if ( !cached ) {
 		// Generate a function of recursive functions that can be used to check each element
 		if ( !group ) {
 			group = tokenize( selector );
 		}
+		// i 表示 selector 被逗号分隔成多少部分
 		i = group.length;
 		while ( i-- ) {
+			// 生成匹配器
 			cached = matcherFromTokens( group[i] );
 			if ( cached[ expando ] ) {
 				setMatchers.push( cached );
@@ -4898,8 +5023,10 @@ compile = Sizzle.compile = function( selector, group /* Internal Use Only */ ) {
 		}
 
 		// Cache the compiled function
+		// 生成超级匹配器，并缓存起来
 		cached = compilerCache( selector, matcherFromGroupMatchers( elementMatchers, setMatchers ) );
 	}
+
 	return cached;
 };
 
