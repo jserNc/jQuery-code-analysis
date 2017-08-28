@@ -4790,7 +4790,7 @@ function setMatcher( preFilter, selector, matcher, postFilter, postFinder, postS
 	});
 }
 
-// 参数为 token 组成的一维数组，返回一组匹配器
+// 一组 tokens 生成一个函数
 function matcherFromTokens( tokens ) {
 	var checkContext, matcher, j,
 		len = tokens.length,
@@ -5013,7 +5013,11 @@ compile = Sizzle.compile = function( selector, group /* Internal Use Only */ ) {
 		// i 表示 selector 被逗号分隔成多少部分
 		i = group.length;
 		while ( i-- ) {
-			// 生成匹配器
+			/*
+            注意这个 matcherFromTokens( group[i] ) 返回值为 elementMatcher( matchers )
+            ① 一般情况下这个 elementMatcher( matchers ) 就是一个新的函数，这个函数没有 expando 属性
+            ② 不过，当 matchers 长度为 1 时，elementMatcher( matchers ) 就是 matchers[0]，这个函数是可能有 expando 属性的
+             */
 			cached = matcherFromTokens( group[i] );
 			if ( cached[ expando ] ) {
 				setMatchers.push( cached );
