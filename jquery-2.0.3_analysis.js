@@ -2438,6 +2438,7 @@ var i,
 
 	// Instance-specific data
 	expando = "sizzle" + -(new Date()),
+    // 首选 doc
 	preferredDoc = window.document,
 	dirruns = 0,
 	done = 0,
@@ -2456,6 +2457,7 @@ var i,
 
 	// General-purpose constants
 	strundefined = typeof undefined,
+    // -2147483648
 	MAX_NEGATIVE = 1 << 31,
 
 	// Instance methods
@@ -2466,6 +2468,7 @@ var i,
 	push = arr.push,
 	slice = arr.slice,
 	// Use a stripped-down indexOf if we can't use a native one
+    // 首选数组原生的 indexOf 方法，否则自定义
 	indexOf = arr.indexOf || function( elem ) {
 		var i = 0,
 			len = this.length;
@@ -2482,16 +2485,16 @@ var i,
 	// Regular expressions
 
 	// Whitespace characters http://www.w3.org/TR/css3-selectors/#whitespace
-	// “空白符” \x20 空格 \t 制表符  \r 回车  \n 换行 \f 换页
+	// 表示“空白符”  {\x20 空格}  {\t 制表符}  {\r 回车}  {\n 换行}  {\f 换页}
     whitespace = "[\\x20\\t\\r\\n\\f]",
 	
 	/*
 	r = new RegExp(characterEncoding)
 	-> r = /(?:\\.|[\w-]|[^\x00-\xa0])+/
 	三类可以通过匹配：
-	① \任意非换行字符    r.exec('\\1')  -> ["\1", index: 0, input: "\1"]
+	① \任意非换行字符      r.exec('\\1')  -> ["\1", index: 0, input: "\1"]
 	② word 或 -          r.exec('-')    -> ["-", index: 0, input: "-"]
-	③ 非 \x00-\xa0 字符  如 r.exec('\xab') 可以通过匹配，只是字符 '\xab' 在当前文件编码下不能显示，所以这里就不写了
+	③ 非 \x00-\xa0 字符   如 r.exec('\xab') 可以通过匹配（字符 '\xab' 在当前文件编码下不能显示，所以这里就不写了）
 	*/
 	// http://www.w3.org/TR/css3-syntax/#characters
 	characterEncoding = "(?:\\\\.|[\\w-]|[^\\x00-\\xa0])+",
@@ -2527,11 +2530,14 @@ var i,
 	// Leading and non-escaped trailing whitespace, capturing some non-whitespace characters preceding the latter
 	rtrim = new RegExp( "^" + whitespace + "+|((?:^|[^\\\\])(?:\\\\.)*)" + whitespace + "+$", "g" ),
 
-    // /^[\x20\t\r\n\f]*,[\x20\t\r\n\f]*/
+    // /^[\x20\t\r\n\f]*,[\x20\t\r\n\f]*/  匹配逗号
 	rcomma = new RegExp( "^" + whitespace + "*," + whitespace + "*" ),
+    // 匹配连接符
 	rcombinators = new RegExp( "^" + whitespace + "*([>+~]|" + whitespace + ")" + whitespace + "*" ),
 
+    // 匹配兄弟关系符
 	rsibling = new RegExp( whitespace + "*[+~]" ),
+    // 不是 ] ' " 这 3 中字符其中一种
 	rattributeQuotes = new RegExp( "=" + whitespace + "*([^\\]'\"]*)" + whitespace + "*\\]", "g" ),
 
 	rpseudo = new RegExp( pseudos ),
@@ -2555,18 +2561,36 @@ var i,
 		"bool": new RegExp( "^(?:" + booleans + ")$", "i" ),
 		// For use in libraries implementing .is()
 		// We use this for POS matching in `select`
+        // 以 > + ~ 等三个字符开头，或位置伪类
 		"needsContext": new RegExp( "^" + whitespace + "*[>+~]|:(even|odd|eq|gt|lt|nth|first|last)(?:\\(" +
 			whitespace + "*((?:-\\d)?\\d*)" + whitespace + "*\\)|)(?=[^-]|$)", "i" )
 	},
 
+    /*
+    rnative.exec('push() { [native code] }')
+    -> ["push() { [native c", index: 0, input: "push() { [native code] }"]
+
+    r.exec([].push)
+    -> ["function push() { [native c", index: 0, input: "function push() { [native code] }"]
+
+    该正则可以用来判断原生方法
+     */
 	rnative = /^[^{]+\{\s*\[native \w/,
 
 	// Easily-parseable/retrievable ID or TAG or CLASS selectors
+    // 匹配 #id tag .class 等 3 种选择器 
 	rquickExpr = /^(?:#([\w-]+)|(\w+)|\.([\w-]+))$/,
 
+    // input|select|textarea|button
 	rinputs = /^(?:input|select|textarea|button)$/i,
+    // h1 h2 
 	rheader = /^h\d$/i,
-
+    /*
+    rescape.exec('\\')
+    -> ["\", index: 0, input: "\"]
+    rescape.exec("'")
+    -> ["'", index: 0, input: "'"]
+     */
 	rescape = /'|\\/g,
 
     /*
@@ -2634,10 +2658,10 @@ var i,
     
     var s = '\uD834\uDF06';
 
-    s.length // 2
-    /^.$/.test(s) // false
-    s.charAt(0) // ""
-    s.charAt(1) // ""
+    s.length        // 2
+    /^.$/.test(s)   // false
+    s.charAt(0)     // ""
+    s.charAt(1)     // ""
     s.charCodeAt(0) // 55348
     s.charCodeAt(1) // 57094
 
@@ -2682,15 +2706,28 @@ var i,
 
 
 // Optimize for push.apply( _, NodeList )
+// 如果浏览器支持 push.apply 方法，那就最好了，否则就自己实现这个方法
 try {
+    /*
+    preferredDoc = window.document
+
+    eg:
+    preferredDoc.childNodes
+    -> [<!DOCTYPE html>, comment, comment, html]
+
+    arr = [<!DOCTYPE html>, comment, comment, html, <!DOCTYPE html>, comment, comment, html]
+
+     */
 	push.apply(
 		(arr = slice.call( preferredDoc.childNodes )),
 		preferredDoc.childNodes
 	);
 	// Support: Android<4.0
 	// Detect silently failing push.apply
+    // 如果浏览器能执行 push.apply 方法，这里就默默地执行好了，否则报错，就会执行下面的 catch 语句
 	arr[ preferredDoc.childNodes.length ].nodeType;
 } catch ( e ) {
+    // arr.length 不为 0 ，说明 slice.call 方法可以用
 	push = { apply: arr.length ?
 
 		// Leverage slice if possible
@@ -2705,6 +2742,7 @@ try {
 				i = 0;
 			// Can't trust NodeList.length
 			while ( (target[j++] = els[i++]) ) {}
+            // while 循环最后一次条件不成立，但是 j 还是加 1 了，所以得减回去
 			target.length = j - 1;
 		}
 	};
@@ -2783,19 +2821,7 @@ Sizzle.selectors.relative: { // 块间关系处理函数集
 	"~" : function() {}
 } 
 
-*/
 
-
-
-// sizzle 的作用是：输入一个选择器字符串，返回一个符合规则的 DOM 节点列表。
-// 其实在高级浏览器里，这个接口是存在的，就是document.querySelectorAll。
-// 只不过低级浏览器里没这个接口，所以才会需要 sizzle 这个css 选择器引擎
-
-//* 1、对于单一选择器，且是ID、Tag、Class三种类型之一，则直接获取并返回结果 
-//* 2、对于支持querySelectorAll方法的浏览器，通过执行querySelectorAll方法获取并返回匹配的DOM元素 
-//* 3、除上之外则调用select方法获取并返回匹配的DOM元素 
-
-/*
 看看怎么从 jQuery.fn.init 方法走到 Sizzle 方法的：
 
 ① jQuery.fn.init 方法中调用 jQuery.fn.find 方法：
@@ -2814,7 +2840,11 @@ for ( i = 0; i < len; i++ ) {
 jQuery.find = Sizzle;
 */
 
-// context 为选择的范围
+/*
+1 对于单一选择器，且是 ID、Tag、Class 三种类型之一，则直接获取并返回结果 
+2 对于支持 querySelectorAll 方法的浏览器，通过执行 querySelectorAll 方法获取并返回匹配的 dom 元素 
+3 除上之外则调用 select 方法获取并返回匹配的 dom 元素 
+ */
 function Sizzle( selector, context, results, seed ) {
 	var match, elem, m, nodeType,
 		// QSA vars
@@ -2828,15 +2858,12 @@ function Sizzle( selector, context, results, seed ) {
 	context = context || document;
 	results = results || [];
 
-    // 选择器不合法，则返回 results
+    // 选择器不合法，直接返回 results
 	if ( !selector || typeof selector !== "string" ) {
 		return results;
 	}
 
-    /*
-	元素的 nodeType 是 1，文档（document）nodeType 是 9
-	若 context 既不是元素又不是 document，那就返回空数组
-    */
+	// 元素的 nodeType 是 1，文档（document）nodeType 是 9。若 context 既不是元素又不是 document，那就返回空数组
 	if ( (nodeType = context.nodeType) !== 1 && nodeType !== 9 ) {
 		return [];
 	}
@@ -2847,9 +2874,9 @@ function Sizzle( selector, context, results, seed ) {
 		/*
 		rquickExpr = /^(?:#([\w-]+)|(\w+)|\.([\w-]+))$/
 		匹配 3 种情况
-		① #([\w-]+) 匹配 #id      match[1]
-		② (\w+) 匹配 tag          match[2]
-		③ \.([\w-]+) 匹配 .class  match[3]
+		① #([\w-]+)  匹配 #id      match[1]
+		② (\w+)      匹配 tag      match[2]
+		③ \.([\w-]+) 匹配 .class   match[3]
 		*/
 		if ( (match = rquickExpr.exec( selector )) ) {
 			// Speed-up: Sizzle("#ID")
@@ -2983,7 +3010,7 @@ function Sizzle( selector, context, results, seed ) {
 
 				i = groups.length;
 				while ( i-- ) {
-					// 新生成一组选择器字符串。每个选择器字符串以 "[id='contextId'] " 这种形式开头
+					// 新生成每一组选择器字符串。每个选择器字符串以 "[id='contextId'] " 这种形式开头
 					groups[i] = nid + toSelector( groups[i] );
 				}
 				/*
@@ -3024,7 +3051,7 @@ function Sizzle( selector, context, results, seed ) {
 
 	// All others
     /* 
-	 seed 存在或不支持 querySelectorAll 等方法用 select 方法来获取结果
+	 若 seed 存在或不支持 querySelectorAll 等方法用 select 方法来获取结果
 
      rtrim /^[\x20\t\r\n\f]+|((?:^|[^\\])(?:\\.)*)[\x20\t\r\n\f]+$/g
      selector.replace( rtrim, "$1" ) 作用是去掉 selector 两边的空白
@@ -3064,7 +3091,7 @@ function createCache() {
 		// Use (key + " ") to avoid collision with native prototype properties (see Issue #157)
 		/*
 		① key 作为属性名，这里在它末尾加一个空格，比较另类。
-		   这是因为 cache 是一个数组（对象），本身具有一些属性，为了不予它本身的属性名冲突，所以只好用另类的属性名以示区分。
+		   这是因为 cache 是一个数组（对象），本身具有一些属性和方法，为了不和它本身的属性方法名冲突，所以只好用另类的属性名以示区分。
 		② push 函数的作用是向数组末尾添加元素，然后返回数组新的长度。Expr.cacheLength 是个常量，50。
 		③ keys 数组在这里只是起到判断数据长度的作用，事件数据是存在 cache 函数（对象）上的。
 		   当长度大于 50 时，删除最早加入的缓存数据。	
