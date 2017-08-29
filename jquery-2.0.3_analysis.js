@@ -3199,7 +3199,7 @@ function createPositionalPseudo( fn ) {
 					return [ argument < 0 ? argument + length : argument ];
 				})
 				
-				fn( [], seed.length, argument ) 会返回索引组成的数组
+				fn( [], seed.length, argument ) 会返回数组 [ argument < 0 ? argument + seed.length : argument ]
 				*/
 				matchIndexes = fn( [], seed.length, argument ),
 				i = matchIndexes.length;
@@ -3909,6 +3909,31 @@ Expr = Sizzle.selectors = {
 		}
 	},
 
+	/*
+	f(x) 和 g(x)合成为 f(g(x))，有一个隐藏的前提，就是 f 和 g 都只能接受一个参数。
+	
+	函数 curry 化（柯里化）：
+	所谓“柯里化”，就是把一个多参数的函数，转成单参数函数。
+
+	eg:
+	// 柯里化之前
+	function add(x, y) {
+	  return x + y;
+	}
+
+	add(1, 2) // 3
+
+	// 柯里化之后
+	function addX(y) {
+	  return function (x) {
+		return x + y;
+	  };
+	}
+
+	addX(2)(1) // 3
+
+	*/
+
 	filter: {
 		/*
 		① nodeNameSelector 为 "*"，即 Expr.filter["TAG"]("*")(elem)，一直返回 true；
@@ -4612,7 +4637,7 @@ function addCombinator( matcher, combinator, base ) {
 		function( elem, context, xml ) {
 			while ( (elem = elem[ dir ]) ) {
 				if ( elem.nodeType === 1 || checkNonElements ) {
-					// 既然是紧密节点，找到了第一个就要做决断，成就成，不成就不成
+					// 既然是紧密关系，找到了第一个紧密节点就要用 matcher 做决断，成就成，不成就不成
 					return matcher( elem, context, xml );
 				}
 			}
@@ -4638,13 +4663,33 @@ function addCombinator( matcher, combinator, base ) {
 				while ( (elem = elem[ dir ]) ) {
 					if ( elem.nodeType === 1 || checkNonElements ) {
 						outerCache = elem[ expando ] || (elem[ expando ] = {});
+						// 有缓存，不用调用 matcher 函数
 						if ( (cache = outerCache[ dir ]) && cache[0] === dirkey ) {
+							// 非紧密关系，只要有一个相关元素符合要求就行了
 							if ( (data = cache[1]) === true || data === cachedruns ) {
 								return data === true;
 							}
+						// 没有缓存，调用 matcher 函数
 						} else {
+							/*
+							① cache = [ dirkey ] 
+							cache[0] = dirkey;
+							cache[1] = matcher( elem, context, xml ) || cachedruns
+
+							② 这里修改了 elem[ expando ] 对象 
+							a. 修改 outerCache 相当于修改 elem[ expando ] 对象，所以：
+							outerCache[ dir ] = [ dirkey ]
+							-> elem[ expando ] : {
+								   dir : [ dirkey ]
+							   }
+							b. 修改 cache 也相当于修改 elem[ expando ] 对象
+							-> elem[ expando ] : {
+								   dir : [ dirkey,  matcher( elem, context, xml ) || cachedruns]
+							   }
+							*/
 							cache = outerCache[ dir ] = [ dirkey ];
 							cache[1] = matcher( elem, context, xml ) || cachedruns;
+							// 非紧密关系，只要有一个相关元素符合要求就行了
 							if ( cache[1] === true ) {
 								return true;
 							}
@@ -4891,17 +4936,38 @@ function matcherFromTokens( tokens ) {
 // elementMatchers 和 setMatchers 都是数组
 function matcherFromGroupMatchers( elementMatchers, setMatchers ) {
 	// A counter to specify which element is currently being matched
+	// 标识当前正在匹配的元素
 	var matcherCachedRuns = 0,
 		bySet = setMatchers.length > 0,
 		byElement = elementMatchers.length > 0,
-		// 超级匹配器
+		/*
+		在 select 方法中调用了这个超级匹配器，生成最终符合选择器的 dom 集合
+
+		var superMatcher = compile( selector, match );
+		superMatcher(
+			seed,
+			context,
+			!documentIsHTML,
+			results,
+			rsibling.test( selector )
+		);
+
+		其中 rsibling = new RegExp( whitespace + "*[+~]" ) 用于判定选择器是否存在兄弟关系符 
+		*/
 		superMatcher = function( seed, context, xml, results, expandContext ) {
 			var elem, j, matcher,
 				setMatched = [],
 				matchedCount = 0,
 				i = "0",
-				// 如果没有 seed，就是 []
+				// 如果有 seed，就是 []
 				unmatched = seed && [],
+				/*
+				对于 rsibling.test( selector )，返回值要么 true 要么 false
+				true != null  -> true
+				false != null -> true
+				
+				所以，在 select 方法中调用这个超级匹配器时，outermost 始终为 true
+				*/
 				outermost = expandContext != null,
 				contextBackup = outermostContext,
 				// We must always have either seed elements or context
@@ -4911,10 +4977,15 @@ function matcherFromGroupMatchers( elementMatchers, setMatchers ) {
 				*/
 				elems = seed || byElement && Expr.find["TAG"]( "*", expandContext && context.parentNode || context ),
 				// Use integer dirruns iff this is the outermost matcher
+				/*
+				① contextBackup 为 undefined|null 时，dirruns += 1
+				② 否则，dirruns += Math.random() || 0.1
+				*/
 				dirrunsUnique = (dirruns += contextBackup == null ? 1 : Math.random() || 0.1);
 
 			if ( outermost ) {
 				outermostContext = context !== document && context;
+				// 全局保存当前匹配的元素索引
 				cachedruns = matcherCachedRuns;
 			}
 
@@ -4923,6 +4994,10 @@ function matcherFromGroupMatchers( elementMatchers, setMatchers ) {
 			for ( ; (elem = elems[i]) != null; i++ ) {
 				if ( byElement && elem ) {
 					j = 0;
+					/*
+					一个 selector 可能对于多组 tokens，一组 tokens 对应一个 elementMatcher（或 setMatcher）
+					也就是说，对于 "part1,part2,part3..." 这个 selector	，不管 elem 满足哪个 part 都是可以的，见好就收，没必须继续循环。
+					*/
 					while ( (matcher = elementMatchers[j++]) ) {
 						if ( matcher( elem, context, xml ) ) {
 							results.push( elem );
@@ -4931,6 +5006,7 @@ function matcherFromGroupMatchers( elementMatchers, setMatchers ) {
 					}
 					if ( outermost ) {
 						dirruns = dirrunsUnique;
+						// 全局保存当前匹配的元素索引，每一个元素匹配结束，索引值加 1
 						cachedruns = ++matcherCachedRuns;
 					}
 				}
