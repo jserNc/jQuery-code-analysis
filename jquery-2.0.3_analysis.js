@@ -3954,6 +3954,7 @@ Sizzle.error = function( msg ) {
  * Document sorting and removing duplicates
  * @param {ArrayLike} results
  */
+// 先排序，再去重
 Sizzle.uniqueSort = function( results ) {
 	var elem,
 		duplicates = [],
@@ -3963,16 +3964,26 @@ Sizzle.uniqueSort = function( results ) {
 	// Unless we *know* we can detect duplicates, assume their presence
 	hasDuplicate = !support.detectDuplicates;
 	sortInput = !support.sortStable && results.slice( 0 );
+    /*
+    sortOrder 方法返回元素 a 和 b 的位置关系。作用类似于原生的 compareDocumentPosition 方法。
+    ① a === b，返回 0；
+    ② a 在 b 之前，返回 -1；
+    ③ a 在 b 之后，返回 1
+
+    这里对 results 数组排序，会改变 results 数组
+     */
 	results.sort( sortOrder );
 
 	// 如果有重复
 	if ( hasDuplicate ) {
 		while ( (elem = results[i++]) ) {
 			if ( elem === results[ i ] ) {
+                // 将重复元素的索引保存起来，另外 push() 方法可向数组的末尾添加一个或多个元素，并返回新的长度
 				j = duplicates.push( i );
 			}
 		}
 		while ( j-- ) {
+            // 遍历数组 duplicates，依次删除 results 中重复元素
 			results.splice( duplicates[ j ], 1 );
 		}
 	}
@@ -3984,18 +3995,21 @@ Sizzle.uniqueSort = function( results ) {
  * Utility function for retrieving the text value of an array of DOM nodes
  * @param {Array|Element} elem
  */
+// 获取一个或一组节点的文本
 getText = Sizzle.getText = function( elem ) {
 	var node,
 		ret = "",
 		i = 0,
 		nodeType = elem.nodeType;
 
+    // elem 是数组，递归调用
 	if ( !nodeType ) {
 		// If no nodeType, this is expected to be an array
 		for ( ; (node = elem[i]); i++ ) {
 			// Do not traverse comment nodes
 			ret += getText( node );
 		}
+    // 1 - Element, 9 - Document, 11 - DocumentFragment,
 	} else if ( nodeType === 1 || nodeType === 9 || nodeType === 11 ) {
 		// Use textContent for elements
 		// innerText usage removed for consistency of new lines (see #11153)
@@ -4003,10 +4017,12 @@ getText = Sizzle.getText = function( elem ) {
 			return elem.textContent;
 		} else {
 			// Traverse its children
+            // 递归调用
 			for ( elem = elem.firstChild; elem; elem = elem.nextSibling ) {
 				ret += getText( elem );
 			}
 		}
+    // 3 - Text, 4 - CDATASection
 	} else if ( nodeType === 3 || nodeType === 4 ) {
 		return elem.nodeValue;
 	}
