@@ -2537,7 +2537,7 @@ var i,
 
     // 匹配兄弟关系符
 	rsibling = new RegExp( whitespace + "*[+~]" ),
-    // 不是 ] ' " 这 3 中字符其中一种
+    // = 后跟的若干字符不是 ] ' " 这 3 中字符其中一种，然后是 ] 
 	rattributeQuotes = new RegExp( "=" + whitespace + "*([^\\]'\"]*)" + whitespace + "*\\]", "g" ),
 
 	rpseudo = new RegExp( pseudos ),
@@ -2570,7 +2570,7 @@ var i,
     rnative.exec('push() { [native code] }')
     -> ["push() { [native c", index: 0, input: "push() { [native code] }"]
 
-    r.exec([].push)
+    rnative.exec([].push)
     -> ["function push() { [native c", index: 0, input: "function push() { [native code] }"]
 
     该正则可以用来判断原生方法
@@ -3129,11 +3129,13 @@ function markFunction( fn ) {
  // 以布尔值的形式返回 fn(div)
 function assert( fn ) {
 	var div = document.createElement("div");
-
+	// 注意：try/catch/finally 语句执行完毕才会执行函数的 return 语句
 	try {
+		// 执行结果转成布尔值
 		return !!fn( div );
 	} catch (e) {
 		return false;
+	// 执行完毕，清理辅助元素
 	} finally {
 		// Remove from its parent by default
 		if ( div.parentNode ) {
@@ -3149,11 +3151,18 @@ function assert( fn ) {
  * @param {String} attrs Pipe-separated list of attributes
  * @param {Function} handler The method that will be applied
  */
+ /*
+举个例子就知道这个函数的用法了：
+addHandle( "type|href|height|width", fn);
+
+给指定的几个属性加上同一个 handler 方法
+ */
 function addHandle( attrs, handler ) {
 	var arr = attrs.split("|"),
 		i = attrs.length;
 
 	while ( i-- ) {
+		// 把一组属性指向同一个函数
 		Expr.attrHandle[ arr[i] ] = handler;
 	}
 }
@@ -3164,18 +3173,36 @@ function addHandle( attrs, handler ) {
  * @param {Element} b
  * @returns {Number} Returns less than 0 if a precedes b, greater than 0 if a follows b
  */
+// 检查两个兄弟节点在文档中的顺序。如果返回值小于 0 ，表明 a 在 b 前；如果返回值大于 0，表明 a 在 b 后。
 function siblingCheck( a, b ) {
 	var cur = b && a,
+		/*
+		① MAX_NEGATIVE 为最小的负数 -2147483648 （1 << 31）
+
+		② ~ 是 “否运算”，即将每个二进制位都变为相反值（0 变为 1，1 变为 0）。
+		有个规律：一个数与自身的取反值相加，等于-1
+
+		假如 a.sourceIndex = 3; b.sourceIndex = 4
+		~b.sourceIndex -> ~4 -> -5
+		~a.sourceIndex -> ~3 -> -4
+
+		-5 - -4 -> -1
+		结果小于0 ，认为 a 在 b 前
+
+		绕这么大个圈子，为什么不直接 a.sourceIndex - b.sourceIndex 呢？
+		*/
 		diff = cur && a.nodeType === 1 && b.nodeType === 1 &&
 			( ~b.sourceIndex || MAX_NEGATIVE ) -
 			( ~a.sourceIndex || MAX_NEGATIVE );
 
 	// Use IE sourceIndex if available on both nodes
+	// ie 通过 sourceIndex 来判断
 	if ( diff ) {
 		return diff;
 	}
 
 	// Check if b follows a
+	// 如果在 a 的后续兄弟节点中找到了 b，那就返回 -1，表示 a 在 b 前面
 	if ( cur ) {
 		while ( (cur = cur.nextSibling) ) {
 			if ( cur === b ) {
@@ -3191,6 +3218,7 @@ function siblingCheck( a, b ) {
  * Returns a function to use in pseudos for input types
  * @param {String} type
  */
+// 创建一个柯里函数，判断元素 elem 是否同时满足俩条件：① 标签名是 input ；② 类型是指定的 type 
 function createInputPseudo( type ) {
 	return function( elem ) {
 		var name = elem.nodeName.toLowerCase();
@@ -3202,6 +3230,7 @@ function createInputPseudo( type ) {
  * Returns a function to use in pseudos for buttons
  * @param {String} type
  */
+// 创建一个柯里函数，判断元素 elem 是否同时满足俩条件：① 标签名是 input 或 button；② 类型是指定的 type 
 function createButtonPseudo( type ) {
 	return function( elem ) {
 		var name = elem.nodeName.toLowerCase();
@@ -3217,6 +3246,7 @@ function createButtonPseudo( type ) {
 function createPositionalPseudo( fn ) {
 	// markFunction(func) 给 func 函数添加一个 expando 属性，起到标记该函数的作用
 	return markFunction(function( argument ) {
+		// 将 argument 转为数值
 		argument = +argument;
 		return markFunction(function( seed, matches ) {
 			var j,
@@ -3227,6 +3257,8 @@ function createPositionalPseudo( fn ) {
 				})
 				
 				fn( [], seed.length, argument ) 会返回数组 [ argument < 0 ? argument + seed.length : argument ]
+				
+				matchIndexes 表示根据伪类函数选择出的一组索引值
 				*/
 				matchIndexes = fn( [], seed.length, argument ),
 				i = matchIndexes.length;
@@ -3254,6 +3286,25 @@ function createPositionalPseudo( fn ) {
 isXML = Sizzle.isXML = function( elem ) {
 	// documentElement is verified for cases where it doesn't yet exist
 	// (such as loading iframes in IE - #4833)
+	/*
+	elem 可以是元素或 document
+	① elem 是普通元素，eg : elem = div1
+	div1.ownerDocument -> document
+
+	② elem 是 document
+	document.ownerDocument -> null （竟然不是 undefined）
+	
+	关于 document.documentElement.nodeName 的值
+	① xml 文档下，以 http://www.w3school.com.cn/example/xmle/cd_catalog.xml 为例：
+	在 chrome 下打印结果是 "html"，"html" !== "HTML"；
+	在 ie9 下打印结果是 "CATALOG" 
+	在 ie7,ie8 下打印结果是 "HTML"
+	
+	总之，在 ie8 以上浏览器中，打印结果都不是 "HTML"
+
+	② html 文档下：
+	document.documentElement.nodeName 是 "HTML"，"HTML" === "HTML"
+	*/
 	var documentElement = elem && (elem.ownerDocument || elem).documentElement;
 	return documentElement ? documentElement.nodeName !== "HTML" : false;
 };
@@ -3266,8 +3317,15 @@ support = Sizzle.support = {};
  * @param {Element|Object} [doc] An element or document object to use to set the document
  * @returns {Object} Returns the current document
  */
+/*
+作用：设置当前 document 相关的值
+参数：普通元素或当前 document
+返回值：当前 document
+*/
 setDocument = Sizzle.setDocument = function( node ) {
+	// preferredDoc = window.document，这里的 doc 就是指向当前文档对象
 	var doc = node ? node.ownerDocument || node : preferredDoc,
+		// document.defaultView === window
 		parent = doc.defaultView;
 
 	// If no document and documentElement is available, return
@@ -3280,12 +3338,14 @@ setDocument = Sizzle.setDocument = function( node ) {
 	docElem = doc.documentElement;
 
 	// Support tests
+	// 不是 xml 就认为是 html
 	documentIsHTML = !isXML( doc );
 
 	// Support: IE>8
 	// If iframe document is assigned to "document" variable and if iframe has been reloaded,
 	// IE will throw "permission denied" error when accessing "document" variable, see jQuery #13936
 	// IE6-8 do not support the defaultView property so parent will be undefined
+	// 被嵌套的子页面在卸载之前，执行 setDocument 方法
 	if ( parent && parent.attachEvent && parent !== parent.top ) {
 		parent.attachEvent( "onbeforeunload", function() {
 			setDocument();
@@ -3297,6 +3357,12 @@ setDocument = Sizzle.setDocument = function( node ) {
 
 	// Support: IE<8
 	// Verify that getAttribute really returns attributes and not properties (excepting IE8 booleans)
+	/*
+	检测：是否 getAttribute 方法返回的只是 attributes，而不是 properties
+	举例：
+	在 chrome 下，设置 div.className = "i"，div.getAttribute("className") 返回是 null，!div.getAttribute("className") -> true，符合预期。
+	也就是说，getAttribute 方法只能获取写在标签里的 attributes，而不能获取通过 . 运算符设置的 properties
+	*/
 	support.attributes = assert(function( div ) {
 		div.className = "i";
 		return !div.getAttribute("className");
@@ -3306,12 +3372,17 @@ setDocument = Sizzle.setDocument = function( node ) {
 	---------------------------------------------------------------------- */
 
 	// Check if getElementsByTagName("*") returns only elements
+	/*
+	检测：是否 getElementsByTagName(*) 返回的只是元素（有的浏览器除了返回元素，还返回注释）
+	这里给 div 添加了一个注释节点，如果最后 div.getElementsByTagName("*").length 还是 0，就是符合预期的
+	*/
 	support.getElementsByTagName = assert(function( div ) {
 		div.appendChild( doc.createComment("") );
 		return !div.getElementsByTagName("*").length;
 	});
 
 	// Check if getElementsByClassName can be trusted
+	// 检测 getElementsByClassName 方法是否可用
 	support.getElementsByClassName = assert(function( div ) {
 		div.innerHTML = "<div class='a'></div><div class='a i'></div>";
 
@@ -3327,6 +3398,7 @@ setDocument = Sizzle.setDocument = function( node ) {
 	// Check if getElementById returns elements by name
 	// The broken getElementById methods don't pick up programatically-set names,
 	// so use a roundabout getElementsByName test
+	// 低版本 ie 浏览器下，可以通过 document.getElementsByName(v) 方法获取 id 为 v 的元素。
 	support.getById = assert(function( div ) {
 		docElem.appendChild( div ).id = expando;
 		return !doc.getElementsByName || !doc.getElementsByName( expando ).length;
@@ -3369,7 +3441,7 @@ setDocument = Sizzle.setDocument = function( node ) {
 	// Tag
 	// support.getElementsByTagName 用来检测 getElementsByTagName(*) 是否只返回元素节点，有的浏览器除了返回与元素，还返回注释
 	Expr.find["TAG"] = support.getElementsByTagName ?
-		// getElementsByTagName(*) 只返回元素节点，不包括注释，理想情况
+		// getElementsByTagName(*) 只返回元素节点，不包括注释，这是理想情况
 		function( tag, context ) {
 			if ( typeof context.getElementsByTagName !== strundefined ) {
 				return context.getElementsByTagName( tag );
@@ -3396,6 +3468,7 @@ setDocument = Sizzle.setDocument = function( node ) {
 		};
 
 	// Class
+	// 通过 class 名获取元素
 	Expr.find["CLASS"] = support.getElementsByClassName && function( className, context ) {
 		if ( typeof context.getElementsByClassName !== strundefined && documentIsHTML ) {
 			return context.getElementsByClassName( className );
@@ -3417,9 +3490,22 @@ setDocument = Sizzle.setDocument = function( node ) {
 	// See http://bugs.jquery.com/ticket/13378
 	rbuggyQSA = [];
 
+	/*
+	rnative = /^[^{]+\{\s*\[native \w/ 可以用来判断原生方法
+
+	例如，chrome 下：
+	document.querySelectorAll
+	-> 'function querySelectorAll() { [native code] }'
+	
+	rnative.test('function querySelectorAll() { [native code] }')
+	-> true
+
+	也就是说，chrome 有原生的 document.querySelectorAll 方法
+	*/
 	if ( (support.qsa = rnative.test( doc.querySelectorAll )) ) {
 		// Build QSA regex
 		// Regex strategy adopted from Diego Perini
+		// 做以下测试，往数组 rbuggyQSA 中插入字符串，以便后来根据这些字符串生成正则表达式
 		assert(function( div ) {
 			// Select is set to empty string on purpose
 			// This is to test IE's treatment of not explicitly
@@ -3428,6 +3514,17 @@ setDocument = Sizzle.setDocument = function( node ) {
 			// http://bugs.jquery.com/ticket/12359
 			div.innerHTML = "<select><option selected=''></option></select>";
 
+			/*
+			booleans = "checked|selected|async|autofocus|autoplay|controls|defer|disabled|hidden|ismap|loop|multiple|open|readonly|required|scoped";
+			
+			new RegExp("\\[" + whitespace + "*(?:value|" + booleans + ")")
+			-> /\[[\x20\t\r\n\f]*(?:value|checked|selected|async|autofocus|autoplay|controls|defer|disabled|hidden|ismap|loop|multiple|open|readonly|required|scoped)/
+			
+			[ 后跟若干空白字符，然后再跟 value/checked/selected/async... 等其中一个
+
+			在这里，chrome 等大多数浏览器 div.querySelectorAll("[selected]") 为 1，也就是说可以找到 <option selected=''></option> 节点的
+			而低版本 ie8 浏览器找不到
+			*/
 			// Support: IE8
 			// Boolean attributes and "value" are not treated correctly
 			if ( !div.querySelectorAll("[selected]").length ) {
@@ -3437,6 +3534,14 @@ setDocument = Sizzle.setDocument = function( node ) {
 			// Webkit/Opera - :checked should return selected option elements
 			// http://www.w3.org/TR/2011/REC-css3-selectors-20110929/#checked
 			// IE8 throws error here and will not see later tests
+			/*
+			ie 8 虽然支持 querySelectorAll 方法，但是 div.querySelectorAll(":checked") 会报错。
+
+			那么问题来了，这里报错影响了后面代码执行怎么办？
+
+			值得注意的是，当前匿名方法是由 assert 方法执行的。而 assert 方法是用 try/catch/finally 结果写的。
+			所以，即便出错了也不会影响后续代码的执行。
+			*/
 			if ( !div.querySelectorAll(":checked").length ) {
 				rbuggyQSA.push(":checked");
 			}
@@ -3453,12 +3558,21 @@ setDocument = Sizzle.setDocument = function( node ) {
 			input.setAttribute( "type", "hidden" );
 			div.appendChild( input ).setAttribute( "t", "" );
 
+			/*
+			new RegExp("[*^$]=" + whitespace + "*(?:''|\"\")")
+			-> /[*^$]=[\x20\t\r\n\f]*(?:''|"")/
+
+			匹配 *= "" 或 ^= '' 或 $= "" 这类情况
+
+			理想情况下，t 属性值为空字符串，不应该被 [t*= ""]、[t^= ""]、[t$= ""] 匹配出来 
+			*/
 			if ( div.querySelectorAll("[t^='']").length ) {
 				rbuggyQSA.push( "[*^$]=" + whitespace + "*(?:''|\"\")" );
 			}
 
 			// FF 3.5 - :enabled/:disabled and hidden elements (hidden elements are still enabled)
 			// IE8 throws error here and will not see later tests
+			// ie 8 下执行 div.querySelectorAll(":checked") 会报错
 			if ( !div.querySelectorAll(":enabled").length ) {
 				rbuggyQSA.push( ":enabled", ":disabled" );
 			}
@@ -3469,6 +3583,27 @@ setDocument = Sizzle.setDocument = function( node ) {
 		});
 	}
 
+	/*
+	如果元素将被指定的选择器字符串选择，Element.matches()  方法返回 true; 否则返回 false。
+	一些浏览器使用了非标准名称来实现它，采用 前缀+ matchesSelector() 的方式
+
+	例如这里的 webkitMatchesSelector、mozMatchesSelector、oMatchesSelector、msMatchesSelector
+
+	用法：
+	var result = element.matches(selectorString);
+	返回值 result 的值为 true 或 false
+	参数 selectorString 是个 css 选择器字符串
+
+	eg:
+	<div id="foo">This is the element!</div>
+
+	var el = document.getElementById("foo");
+    if (el.webkitMatchesSelector("div")) {
+       console.log("当前元素是 div");
+    }
+
+	打印结果为：当前元素是 div
+	*/
 	if ( (support.matchesSelector = rnative.test( (matches = docElem.webkitMatchesSelector ||
 		docElem.mozMatchesSelector ||
 		docElem.oMatchesSelector ||
@@ -3477,36 +3612,88 @@ setDocument = Sizzle.setDocument = function( node ) {
 		assert(function( div ) {
 			// Check to see if it's possible to do matchesSelector
 			// on a disconnected node (IE 9)
+			/*
+			相当于：support.disconnectedMatch = div.matches('div')
+
+			div 是个没有插入到文档的节点，这里就是检测这种没插入到文档的节点是不是可以用 matches 方法
+			*/
 			support.disconnectedMatch = matches.call( div, "div" );
 
 			// This should fail with an exception
 			// Gecko does not error, returns false instead
 			matches.call( div, "[s!='']:x" );
+			/*
+			向数组 rbuggyMatches 插入 "!=" 和 pseudos 等 2 个元素。其中：
+			pseudos = ":(" + characterEncoding + ")(?:\\(((['\"])((?:\\\\.|[^\\\\])*?)\\3|((?:\\\\.|[^\\\\()[\\]]|" + attributes.replace( 3, 8 ) + ")*)|.*)\\)|)"
+			*/
 			rbuggyMatches.push( "!=", pseudos );
 		});
 	}
 
+	// 把之前由字符串组成的数组转成一个正则表达式
 	rbuggyQSA = rbuggyQSA.length && new RegExp( rbuggyQSA.join("|") );
 	rbuggyMatches = rbuggyMatches.length && new RegExp( rbuggyMatches.join("|") );
 
 	/* Contains
 	---------------------------------------------------------------------- */
 
+	/*
+	compareDocumentPosition() 方法比较两个节点，并返回描述它们在文档中位置的整数。
+	
+	返回值可能是：
+	1：没有关系，两个节点不属于同一个文档。
+	2：第一节点（P1）位于第二个节点后（P2）。
+	4：第一节点（P1）位于第二节点（P2）前。
+	8：第一节点（P1）位于第二节点内（P2）。
+	16：第二节点（P2）位于第一节点内（P1）。
+	32：没有关系，或是两个节点是同一元素的两个属性。
+	注释：返回值可以是值的组合。例如，返回 20 意味着在 p2 在 p1 内部（16），并且 p1 在 p2 之前（4）。
+
+	eg:
+	var p1=document.getElementById("p1");
+	var p2=document.getElementById("p2");
+	p1.compareDocumentPosition(p2);  
+	// 结果为 4
+	*/
+
 	// Element contains another
 	// Purposefully does not implement inclusive descendent
 	// As in, an element does not contain itself
 	contains = rnative.test( docElem.contains ) || docElem.compareDocumentPosition ?
+		// 原生支持 contains 或 compareDocumentPosition 方法
 		function( a, b ) {
+			// 如果 a 是 document，那就降级为 html 节点
 			var adown = a.nodeType === 9 ? a.documentElement : a,
 				bup = b && b.parentNode;
+			/*
+			① 如果 a 和 b 的父节点全等，那 b 当然属于 a 的内部元素
+			② 如果 a 不是 b 的父节点，a 是 b 的祖先节点，当然也算 b 属于 a 的内部元素
+
+			这里要这么绕一下，是因为原生的 contains 方法包含自己（a.contains(a) -> true），
+			而这里封装的方法认为节点不能自己包含自己（contains(a,a) -> false）
+
+			另外，注意一下 & 运算符:
+			compareDocumentPosition 方法返回 16 表示第二节点（b）位于第一节点内（a）
+			16 & 16 -> 16
+			20 & 16 -> 16
+			
+			其他情况，表示节点 b 不在节点 a 内
+			1 & 16  -> 0
+			2 & 16  -> 0
+			4 & 16  -> 0
+			8 & 16  -> 0
+			32 & 16 -> 0
+			*/
 			return a === bup || !!( bup && bup.nodeType === 1 && (
 				adown.contains ?
 					adown.contains( bup ) :
 					a.compareDocumentPosition && a.compareDocumentPosition( bup ) & 16
 			));
 		} :
+		// 既不支持 contains 方法，也不支持 compareDocumentPosition 方法
 		function( a, b ) {
 			if ( b ) {
+				// 这里也可以看到，从 b 的父元素开始与 a 比较。也就是说，如果 a === b，contains(a,a) -> false
 				while ( (b = b.parentNode) ) {
 					if ( b === a ) {
 						return true;
@@ -3521,39 +3708,60 @@ setDocument = Sizzle.setDocument = function( node ) {
 
 	// Document order sorting
 	sortOrder = docElem.compareDocumentPosition ?
+	/*
+	返回元素 a 和 b 的位置关系。作用类似于原生的 compareDocumentPosition 方法。
+	① a === b，返回 0；
+	② a 在 b 之前，返回 -1；
+	③ a 在 b 之后，返回 1
+	*/
 	function( a, b ) {
-
 		// Flag for duplicate removal
+		// 同一个节点返回 0
 		if ( a === b ) {
 			hasDuplicate = true;
 			return 0;
 		}
-
+		
+		// 用 compareDocumentPosition 方法获取结果
 		var compare = b.compareDocumentPosition && a.compareDocumentPosition && a.compareDocumentPosition( b );
 
 		if ( compare ) {
 			// Disconnected nodes
+			// a 和 b 没有关系，不在同一文档中
 			if ( compare & 1 ||
 				(!support.sortDetached && b.compareDocumentPosition( a ) === compare) ) {
 
 				// Choose the first element that is related to our preferred document
+				// a 在文档中，b 不在文档中，返回 -1
 				if ( a === doc || contains(preferredDoc, a) ) {
 					return -1;
 				}
+				// b 在文档中，a 不在文档中，返回 1
 				if ( b === doc || contains(preferredDoc, b) ) {
 					return 1;
 				}
 
 				// Maintain original order
+				/*
+				① sortInput 为 undefined，返回 0；
+				② sortInput 为一个数组（sortInput = !support.sortStable && results.slice( 0 )），那就返回 a、b 的索引值之差
+				*/
 				return sortInput ?
 					( indexOf.call( sortInput, a ) - indexOf.call( sortInput, b ) ) :
 					0;
 			}
-
+			/*
+			① compare 为 4 表示，第一节点（a）位于第二节点（b）前，返回 -1；
+			② a 和 b 不相等，a 也不在 b 之前，那只能认为 a 在 b 之后了，返回 1。
+			*/
 			return compare & 4 ? -1 : 1;
 		}
 
 		// Not directly comparable, sort on existence of method
+		/*
+		① a.compareDocumentPosition 若是存在，那就说明 b.compareDocumentPosition 不存在，那就认为 a 在 b 前，返回 -1
+		② a 和 b 不相等，a 也不在 b 之前，那只能认为 a 在 b 之后了，返回 1。
+		*/
 		return a.compareDocumentPosition ? -1 : 1;
 	} :
 	function( a, b ) {
@@ -3565,12 +3773,21 @@ setDocument = Sizzle.setDocument = function( node ) {
 			bp = [ b ];
 
 		// Exit early if the nodes are identical
+		// 同一个节点返回 0
 		if ( a === b ) {
 			hasDuplicate = true;
 			return 0;
 
 		// Parentless nodes are either documents or disconnected
+		// 如果某个节点没有父元素，那么这个节点要么是 document，要么还没有插入文档中
 		} else if ( !aup || !bup ) {
+			/*
+			① a 是 document，认为 a 在 b 前面，返回 -1；
+			② b 是 document，说明 a 不是 document，认为 a 在 b 后面，返回 1；
+			③ aup 存在，说明 bup 不存在，那就认为 a 在 b 前面，返回 -1
+			④ bup 存在，说明 aup 不存在，那就认为 a 在 b 后面，返回 1
+			⑤ 最后，根据 a、b 在数组 sortInput （也可能是 undefined）中的索引值来计算
+			*/
 			return a === doc ? -1 :
 				b === doc ? 1 :
 				aup ? -1 :
@@ -3580,42 +3797,69 @@ setDocument = Sizzle.setDocument = function( node ) {
 				0;
 
 		// If the nodes are siblings, we can do a quick check
+		// 父节点相同，说明是兄弟关系
 		} else if ( aup === bup ) {
 			return siblingCheck( a, b );
 		}
 
 		// Otherwise we need full lists of their ancestors for comparison
 		cur = a;
+		// 将 a 的祖先节点都加入到数组 ap 中，越是顶层节点，越是排在数组前面，所以 ap =  [document, html, body, ...]
 		while ( (cur = cur.parentNode) ) {
 			ap.unshift( cur );
 		}
 		cur = b;
+		// 将 b 的祖先节点都加入到数组 bp 中，越是顶层节点，越是排在数组前面，所以 bp =  [document, html, body, ...]
 		while ( (cur = cur.parentNode) ) {
 			bp.unshift( cur );
 		}
 
+		/*
+		document.documentElement.parentNode -> document
+		document.parentNode -> null
+		可以推断，数组 ap 和 数组 bp 第一个元素都是 document，第二个元素都是 html 元素...
+		*/
+
 		// Walk down the tree looking for a discrepancy
+		// 相当于从 document 节点向下找子节点，如果遍历到某个层，ap[i] !== bp[i]，那就说明当前 ap[i] 和 bp[i] 是兄弟节点，因为他们上一次还是相同的
 		while ( ap[i] === bp[i] ) {
 			i++;
 		}
 
 		return i ?
 			// Do a sibling check if the nodes have a common ancestor
-			siblingCheck( ap[i], bp[i] ) :
+			/*
+			① i 的初始值为 0，如果 i 不为 0，说明最起码 document 是 a、b 的共同祖先节点
 
+			② 假如 i 为 5，既然 i 停在 5 这里，没有继续增加，说明 ap[5] !== bp[5]，同时也意味着 ap[4] === bp[4]，
+			那么 ap[5] 和 bp[5] 妥妥的是兄弟关系。
+
+			③ ap[5] 和 bp[5] 的位置关系反映了 a、b 之间的位置关系
+			*/
+			siblingCheck( ap[i], bp[i] ) :
+			
+			/*
+			i 为 0 ，说明 a[0] 或者 b[0] 肯定至少有一个不存在于文档当中
+			① ap[0] === preferredDoc，说明 b 不在文档当中，那就认为 a 在 b 之前，返回 -1；
+			② bp[0] === preferredDoc，说明 a 不在文档当中，那就认为 a 在 b 之后，返回 1；
+			③ a、b 都不存在于文档中，那就认为 a、b 位序相同，返回 0
+			*/
 			// Otherwise nodes in our document sort first
 			ap[i] === preferredDoc ? -1 :
 			bp[i] === preferredDoc ? 1 :
 			0;
 	};
 
+	// 最后返回当前文档
 	return doc;
 };
 
+// 在一批节点（种子节点） elements 中挑选符合选择器 expr 的节点
 Sizzle.matches = function( expr, elements ) {
 	return Sizzle( expr, null, null, elements );
 };
 
+// 判断一个节点 elem 是否符合选择器 expr
 Sizzle.matchesSelector = function( elem, expr ) {
 	// Set document vars if needed
 	if ( ( elem.ownerDocument || elem ) !== document ) {
@@ -3623,13 +3867,24 @@ Sizzle.matchesSelector = function( elem, expr ) {
 	}
 
 	// Make sure that attribute selectors are quoted
+	/*
+	rattributeQuotes = /=[\x20\t\r\n\f]*([^\]'"]*)[\x20\t\r\n\f]*\]/g
+
+	这个正则表示：= 后跟的若干字符不是 ] ' " 这 3 中字符其中一种，然后是 ] 
+	
+	以下这句的作用是将属性选择器中的属性值用引号包起来，eg : 
+	"[a = b]".replace( rattributeQuotes, "='$1']" )
+	-> "[a ='b']"
+	*/
 	expr = expr.replace( rattributeQuotes, "='$1']" );
 
+	// 首选 matches 方法来判断 elem 是否符合选择器 expr
 	if ( support.matchesSelector && documentIsHTML &&
 		( !rbuggyMatches || !rbuggyMatches.test( expr ) ) &&
 		( !rbuggyQSA     || !rbuggyQSA.test( expr ) ) ) {
 
 		try {
+			// 如果不报错的情况下，ret 为 true 或 false
 			var ret = matches.call( elem, expr );
 
 			// IE 9's matchesSelector returns false on disconnected nodes
@@ -3642,9 +3897,11 @@ Sizzle.matchesSelector = function( elem, expr ) {
 		} catch(e) {}
 	}
 
+	// 退而求其次用 Sizzle 方法来判断 elem 是否符合选择器 expr
 	return Sizzle( expr, document, null, [elem] ).length > 0;
 };
 
+// Sizzle.contains 实际就是调用上面定义的 contains 方法
 Sizzle.contains = function( context, elem ) {
 	// Set document vars if needed
 	if ( ( context.ownerDocument || context ) !== document ) {
@@ -3653,18 +3910,32 @@ Sizzle.contains = function( context, elem ) {
 	return contains( context, elem );
 };
 
+// 获取元素 elem 属性名 name 对应的属性值
 Sizzle.attr = function( elem, name ) {
 	// Set document vars if needed
 	if ( ( elem.ownerDocument || elem ) !== document ) {
 		setDocument( elem );
 	}
 
+	/*
+	addHandle 方法中有：Expr.attrHandle[ arr[i] ] = handler;
+	例如：addHandle( "type|href|height|width", fn);
+	*/
 	var fn = Expr.attrHandle[ name.toLowerCase() ],
 		// Don't get fooled by Object.prototype properties (jQuery #13807)
+	    // name.toLowerCase() 是 Expr.attrHandle 的自身属性，而不能是从原型链继承的属性
 		val = fn && hasOwn.call( Expr.attrHandle, name.toLowerCase() ) ?
 			fn( elem, name, !documentIsHTML ) :
 			undefined;
 
+	/*
+	support.attributes 为 true 表示 getAttribute 方法返回的只是 attributes，而不是 properties
+
+	① val 不为 undefined，返回 val；
+	② 如果 val 为 undefined，对于 support.attributes 为真 或 xml 文档，返回 elem.getAttribute( name )
+	③ 如果 val 为 undefined，并且 support.attributes 为假，那就返回 elem.getAttributeNode(name).value
+	④ 以上都不满足，返回 null
+	*/
 	return val === undefined ?
 		support.attributes || !documentIsHTML ?
 			elem.getAttribute( name ) :
@@ -3674,6 +3945,7 @@ Sizzle.attr = function( elem, name ) {
 		val;
 };
 
+// 抛出错误
 Sizzle.error = function( msg ) {
 	throw new Error( "Syntax error, unrecognized expression: " + msg );
 };
@@ -3693,6 +3965,7 @@ Sizzle.uniqueSort = function( results ) {
 	sortInput = !support.sortStable && results.slice( 0 );
 	results.sort( sortOrder );
 
+	// 如果有重复
 	if ( hasDuplicate ) {
 		while ( (elem = results[i++]) ) {
 			if ( elem === results[ i ] ) {
@@ -5346,7 +5619,21 @@ function select( selector, context, results, seed ) {
 }
 
 // One-time assignments
+/*
+expando = "sizzle" + -(new Date())
+-> "sizzle-1504088090141"
 
+expando.split("")
+-> ["s", "i", "z", "z", "l", "e", "-", "1", "5", "0", "4", "0", "8", "8", "1", "4", "5", "5", "8", "7"]
+
+expando.split("").sort( sortOrder )
+-> ["4", "s", "z", "z", "l", "e", "-", "1", "5", "0", "i", "0", "8", "8", "1", "4", "5", "5", "8", "7"]
+
+expando.split("").sort( sortOrder ).join("")
+-> "4szzle-150i088145587"
+
+既然 sortOrder 返回值一直是 0，那数组元素顺序不应该改变，而这里变了，说明排序方法不稳定
+*/
 // Sort stability
 support.sortStable = expando.split("").sort( sortOrder ).join("") === expando;
 
@@ -5373,6 +5660,12 @@ if ( !assert(function( div ) {
 }) ) {
 	addHandle( "type|href|height|width", function( elem, name, isXML ) {
 		if ( !isXML ) {
+			/*
+			注意一下这里的 getAttribute 方法第 2 个参数。
+			一般情况下，我们给 getAttribute 方法指定 1 个参数就好了，这里指定 2 个参数为了兼容低版本 ie。
+			① 第二个参数取值为 1，表示获取属性名时大小写敏感（默认情况下是不敏感的）
+			② 第二个参数取值为 2，表示返回属性原始值（默认情况下低版本 ie 返回的属性值可能是修改过的，例如相对路径的 img 标签得到的是绝对路径）
+			*/
 			return elem.getAttribute( name, name.toLowerCase() === "type" ? 1 : 2 );
 		}
 	});
