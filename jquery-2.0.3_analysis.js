@@ -4068,12 +4068,10 @@ Expr = Sizzle.selectors = {
 			match[3] = ( match[4] || match[5] || "" ).replace( runescape, funescape );
 			
 			/*
-			a[title~=num] 
-			作用：获取具有这个属性且属性值是以一个空格分割的列表，其中包含属性值的 DOM 对象
+			a[title~=flower] 
+			作用：选择 title 属性包含单词 "flower" 的所有元素
 			
-			num 对空格敏感，所以特殊处理，例如：
-			"[a $= 'b']" -> match = ["[a $= 'b']", "a", "$=", "'", "b", undefined, index: 0, input: "[a $= 'b']"]
-			可以看到 match[3] 前后的空格已经给去掉了，所以这里要重新加上
+			~= 要求属性值是以空格分隔的列表。所以这里需给 match[3] 前后补上空格
 			*/
 			if ( match[2] === "~=" ) {
 				match[3] = " " + match[3] + " ";
@@ -4122,7 +4120,7 @@ Expr = Sizzle.selectors = {
 			选择父元素的第 n 个子元素
 
 			其中：
-			index 为每个相匹配子元素的索引值，从1开始
+			index 为每个相匹配子元素的索引值，从 1 开始
 			even 表示偶数索引，odd 表示奇数索引
 			equation 表示一个方程式，如 4n
 			*/
@@ -4139,15 +4137,15 @@ Expr = Sizzle.selectors = {
 				// remember that false/true cast respectively to 0/1
 				/*
 				分两种：
-				① ":nth-child(even)"
-				match[3] 为 "even"，match[4]、match[5]、match[6]、match[7]、match[8] 都是 undefined
-				
-				② ":nth-child(-2n+3)"
+				① ":nth-child(-2n+3)"
 				match[4] xn + y 表达式中的 xn 部分，如 "-2n"
 				match[5] xn 的符号，正或负，如 "-"
 				match[6] x 的值，如 "2"
 				match[7] y 的符号，正或负，如 "+"
 				match[8] y 的值，如 "3"
+
+				② ":nth-child(even)"
+				match[3] 为 "even"，match[4]、match[5]、match[6]、match[7]、match[8] 都是 undefined
 
 				对于 ①：
 				match[4] = +(match[5] + (match[6] || 1)) 
@@ -4158,6 +4156,8 @@ Expr = Sizzle.selectors = {
 				-> 比如 +( "+" + "3" )
 				-> 3
 
+				所以，match[4]、match[5] 分别对应 'xn + y' 中的 x、y 转成数值后的形式
+
 				对于 ②：
 				match[4] = +( 2 * ( match[3] === "even" || match[3] === "odd" ) );
 				-> 比如 +( 2 * true )
@@ -4167,7 +4167,6 @@ Expr = Sizzle.selectors = {
 				-> 比如 +( false )
 				-> 0
 
-				所以，match[4]、match[4] 分别对应 'xn + y' 中的 x、y 转成数值后的形式
 				参数为 'even' 相当于 '2n'，参数 'odd' 相当于 '2n + 1'
 				*/
 				match[4] = +( match[4] ? match[5] + (match[6] || 1) : 2 * ( match[3] === "even" || match[3] === "odd" ) );
