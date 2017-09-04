@@ -4460,8 +4460,10 @@ Expr = Sizzle.selectors = {
 			// spaces as combinators
 			var input = [],
 				results = [],
+				// compile 方法生成超级匹配函数
 				matcher = compile( selector.replace( rtrim, "$1" ) );
-
+			
+			// 伪类
 			return matcher[ expando ] ?
 				markFunction(function( seed, matches, context, xml ) {
 					var elem,
@@ -4519,34 +4521,42 @@ Expr = Sizzle.selectors = {
 						elemLang = elemLang.toLowerCase();
 						return elemLang === lang || elemLang.indexOf( lang + "-" ) === 0;
 					}
+				// 只要是元素节点，就取父元素，层层上溯，直到 document 节点
 				} while ( (elem = elem.parentNode) && elem.nodeType === 1 );
 				return false;
 			};
 		}),
 
 		// Miscellaneous
+		// url#id 这种形式
 		"target": function( elem ) {
 			var hash = window.location && window.location.hash;
 			return hash && hash.slice( 1 ) === elem.id;
 		},
 
+		// 当前元素是否为 html 节点
 		"root": function( elem ) {
 			return elem === docElem;
 		},
 
+		// 是否获取焦点
 		"focus": function( elem ) {
+			// document.hasFocus() 方法返回一个 Boolean，表明当前文档或者当前文档内的节点是否获得了焦点。
 			return elem === document.activeElement && (!document.hasFocus || document.hasFocus()) && !!(elem.type || elem.href || ~elem.tabIndex);
 		},
 
 		// Boolean properties
+		// 未禁用
 		"enabled": function( elem ) {
 			return elem.disabled === false;
 		},
 
+		// 禁用
 		"disabled": function( elem ) {
 			return elem.disabled === true;
 		},
 
+		// 选中（input 和 option 标签才可能有选中状态）
 		"checked": function( elem ) {
 			// In CSS3, :checked should return both checked and selected elements
 			// http://www.w3.org/TR/2011/REC-css3-selectors-20110929/#checked
@@ -4554,9 +4564,11 @@ Expr = Sizzle.selectors = {
 			return (nodeName === "input" && !!elem.checked) || (nodeName === "option" && !!elem.selected);
 		},
 
+		// selected 属性是否为 true
 		"selected": function( elem ) {
 			// Accessing this property makes selected-by-default
 			// options in Safari work properly
+			// 在访问 option 的 selected 属性时，先访问其父级 select 元素的 selectedIndex 属性，强迫浏览器计算 option 的 selected 属性，以得到正确的值。
 			if ( elem.parentNode ) {
 				elem.parentNode.selectedIndex;
 			}
@@ -4572,31 +4584,48 @@ Expr = Sizzle.selectors = {
 			// Thanks to Diego Perini for the nodeName shortcut
 			//   Greater than "@" means alpha characters (specifically not starting with "#" or "?")
 			for ( elem = elem.firstChild; elem; elem = elem.nextSibling ) {
+				/*
+				① elem.nodeName > "@" 表示 elem.nodeName 是普通字母，而不是 # ? 等特殊字符
+				   eg:
+				   '@'.charCodeAt(0) -> 64
+				   'A'.charCodeAt(0) -> 65
+				   '#'.charCodeAt(0) -> 35
+				② elem.nodeType === 3 代表元素或属性中的文本内容
+				③ elem.nodeType === 4 代表文档中的 CDATA 部分（不会由解析器解析的文本）
+				*/
 				if ( elem.nodeName > "@" || elem.nodeType === 3 || elem.nodeType === 4 ) {
 					return false;
 				}
 			}
+			// 没有子元素，或者空文本的元素
 			return true;
 		},
 
+		// 当前元素是否含有子元素或文本，和上面的 empty 方法作用相反
 		"parent": function( elem ) {
 			return !Expr.pseudos["empty"]( elem );
 		},
 
 		// Element/input types
+		// 是否为 h1、h2 这种标题标签
 		"header": function( elem ) {
+			// rheader = /^h\d$/i，其中 i 表示对大小写不敏感
 			return rheader.test( elem.nodeName );
 		},
 
+		// 是否为 input、select、textarea、button 等 4 种标签
 		"input": function( elem ) {
+			// rinputs = /^(?:input|select|textarea|button)$/i
 			return rinputs.test( elem.nodeName );
 		},
 
+		// 是否为按钮
 		"button": function( elem ) {
 			var name = elem.nodeName.toLowerCase();
 			return name === "input" && elem.type === "button" || name === "button";
 		},
 
+		// 文本类型的 input 标签
 		"text": function( elem ) {
 			var attr;
 			// IE6 and 7 will map elem.type to 'text' for new HTML5 types (search, etc)
@@ -4660,13 +4689,28 @@ Expr.pseudos["nth"] = Expr.pseudos["eq"];
 for ( i in { radio: true, checkbox: true, file: true, password: true, image: true } ) {
 	Expr.pseudos[ i ] = createInputPseudo( i );
 }
+/*
+Expr.pseudos[ "radio" ] = createInputPseudo( "radio" )
+-> function( elem ) {
+		var name = elem.nodeName.toLowerCase();
+		return name === "input" && elem.type === "radio";
+	}
+
+Expr.pseudos[ "submit" ] = createButtonPseudo( "submit" )
+-> function( elem ) {
+		var name = elem.nodeName.toLowerCase();
+		return (name === "input" || name === "button") && elem.type === "submit";
+	}
+*/
 for ( i in { submit: true, reset: true } ) {
 	Expr.pseudos[ i ] = createButtonPseudo( i );
 }
 
 // Easy API for creating new setFilters
 function setFilters() {}
+// 注意一下这里，上面以字面量的形式定义了 Expr.filter，但是没有定义 Expr.filters，不要混淆了
 setFilters.prototype = Expr.filters = Expr.pseudos;
+// 这样，Expr.setFilters 就拥有了 Expr.pseudos 的属性
 Expr.setFilters = new setFilters();
 
 /*
@@ -4933,15 +4977,15 @@ function toSelector( tokens ) {
 }
 
 /*
-matcher 是一个函数
-combinator 是以下 4 个 json 对象之一：
+① matcher 是一个函数
+② combinator 是以下 4 个 json 对象之一：
 	relative = {
 	  ">": { dir: "parentNode", first: true },
 	  " ": { dir: "parentNode" },
 	  "+": { dir: "previousSibling", first: true },
 	  "~": { dir: "previousSibling" }
 	}
-base 是 true 或 undefined
+③ base 是 true 或 undefined
 */
 function addCombinator( matcher, combinator, base ) {
 	var dir = combinator.dir,
@@ -9510,11 +9554,11 @@ jQuery.extend({
             }
         };
     }
-    只要在获取option的selected的值时，先访问select.selectedIndex属性，就可以设置option.selected = true了。
-    意思就是在访问option的selected属性时，先访问其父级select元素的selectedIndex属性，
-    强迫浏览器计算option的selected属性，以得到正确的值。
-    需要注意的是option元素的父元素不一定是select，也有可能是optgroup。
-    这里是支持IE9+,所以option的parentNode是optgroup，optgroup的parentNode是select。
+    只要在获取 option 的 selected 的值时，先访问 select.selectedIndex 属性，就可以设置 option.selected = true 了。
+    意思就是在访问 option 的 selected 属性时，先访问其父级 select 元素的 selectedIndex 属性，
+    强迫浏览器计算 option 的 selected 属性，以得到正确的值。
+    需要注意的是 option 元素的父元素不一定是 select，也有可能是 optgroup。
+    这里是支持 IE9+，所以 option 的 parentNode 是 optgroup，optgroup 的 parentNode是select。
      */  
 	propHooks: {
         // tab 键获取焦点顺序
