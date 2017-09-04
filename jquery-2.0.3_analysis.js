@@ -4252,7 +4252,7 @@ Expr = Sizzle.selectors = {
 	filter: {
 		/*
 		① nodeNameSelector 为 "*"，即 Expr.filter["TAG"]("*")(elem)，一直返回 true；
-		② 否则，Expr.filter["TAG"](nodeNameSelector)(elem)，当 elem.nodeName.toLowerCase() === nodeNameSelector 才返回 true
+		② 其他情况，Expr.filter["TAG"](nodeNameSelector)(elem)，当 elem.nodeName.toLowerCase() === nodeNameSelector 才返回 true
 		*/
 		"TAG": function( nodeNameSelector ) {
 			var nodeName = nodeNameSelector.replace( runescape, funescape ).toLowerCase();
@@ -4288,15 +4288,17 @@ Expr = Sizzle.selectors = {
 		对于选择器：[type="checkbox"]
 		name : "type" , operator : "=" , check : "checkbox"
 
-		根据属性值片段 check 和属性值 result 的关系返回相应结果
+		根据属性值片段和属性值的关系返回相应结果
 		*/
 		"ATTR": function( name, operator, check ) {
 			return function( elem ) {
+                // 获取 elem 元素名为 name 的属性值
 				var result = Sizzle.attr( elem, name );
 				
 				if ( result == null ) {
 					return operator === "!=";
 				}
+                // 没有 operator 意味着只要该 elem 元素有 name 属性就行了。既然能走到这个函数，那必然有 name 属性，所以直接返回 true 就好了。
 				if ( !operator ) {
 					return true;
 				}
@@ -4309,7 +4311,8 @@ Expr = Sizzle.selectors = {
 					operator === "^=" ? check && result.indexOf( check ) === 0 :
 					operator === "*=" ? check && result.indexOf( check ) > -1 :
 					operator === "$=" ? check && result.slice( -check.length ) === check :
-					// eg：lang~=en 匹配 <html lang="zh_CN en">
+					// eg：lang~=en 匹配 <html lang="zh_CN en"> 
+                    // Expr.preFilter.ATTR 方法保证 check 字符串前后必定是空格
 					operator === "~=" ? ( " " + result + " " ).indexOf( check ) > -1 :
 					// eg：lang=|en 匹配 <html lang="en-US">
 					operator === "|=" ? result === check || result.slice( 0, check.length + 1 ) === check + "-" :
