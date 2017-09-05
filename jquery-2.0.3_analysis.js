@@ -2958,6 +2958,12 @@ function Sizzle( selector, context, results, seed ) {
 		querySelectorAll 返回的是一个 Static Node List，而 getElementsBy 系列的返回的是一个 Live Node List。
 		也就是说，返回结果集合后，前者不会自动更新，后者会自动更新。
 
+		区别在于：
+		document.getElementsByTagName('div') === document.getElementsByTagName('div') -> true
+		document.querySelectorAll('div') === document.querySelectorAll('div') -> false
+		
+		返回 true 意味着 getElementsBy 每次拿到的是同一个 object。返回 false 意味着每次返回都是不一样的 object。
+
 		eg:
 		// 初始时 dom 中没有 <img> 元素
 		x = document.querySelectorAll('img')
@@ -3187,7 +3193,7 @@ function siblingCheck( a, b ) {
 		~a.sourceIndex -> ~3 -> -4
 
 		-5 - -4 -> -1
-		结果小于0 ，认为 a 在 b 前
+		结果小于 0 ，认为 a 在 b 前
 
 		绕这么大个圈子，为什么不直接 a.sourceIndex - b.sourceIndex 呢？
 		*/
@@ -4416,9 +4422,8 @@ Expr = Sizzle.selectors = {
 			// Remember that setFilters inherits from pseudos
 			var args,
 				/*
-				function setFilters() {}
-				setFilters.prototype = Expr.filters = Expr.pseudos;
-				Expr.setFilters = new setFilters();
+				Expr.setFilters 就拥有了 Expr.pseudos 的属性
+				如果伪类 pseudo 在 Expr.pseudos 中找不到，那就报个错。
 				*/
 				fn = Expr.pseudos[ pseudo ] || Expr.setFilters[ pseudo.toLowerCase() ] ||
 					Sizzle.error( "unsupported pseudo: " + pseudo );
