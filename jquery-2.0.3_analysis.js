@@ -4041,11 +4041,9 @@ Expr = Sizzle.selectors = {
 
 	// Can be adjusted by the user
 	cacheLength: 50,
-
 	createPseudo: markFunction,
-
 	match: matchExpr,
-
+	//  针对浏览器兼容性问题，添加特殊的获取属性方法，如 value、disabled 等
 	attrHandle: {},
 
 	find: {},
@@ -5093,10 +5091,12 @@ function condense( unmatched, map, filter, context, xml ) {
 		newUnmatched = [],
 		i = 0,
 		len = unmatched.length,
+		// map 有值时 mapped 为 true
 		mapped = map != null;
 
 	for ( ; i < len; i++ ) {
 		if ( (elem = unmatched[i]) ) {
+			// 如果没有过滤器，或者能通过过滤器，就把当前 elem 加入到 newUnmatched 数组里
 			if ( !filter || filter( elem, context, xml ) ) {
 				newUnmatched.push( elem );
 				if ( mapped ) {
