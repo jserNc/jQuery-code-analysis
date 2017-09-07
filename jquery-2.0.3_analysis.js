@@ -2868,7 +2868,7 @@ function Sizzle( selector, context, results, seed ) {
 		return [];
 	}
 
-    // html 文档，并且没有第一匹配出来的 seed
+    // html 文档，并且没有 seed
 	if ( documentIsHTML && !seed ) {
 		// Shortcuts
 		/*
@@ -3057,13 +3057,51 @@ function Sizzle( selector, context, results, seed ) {
 
 	// All others
     /* 
-	 若 seed 存在或不支持 querySelectorAll 等方法用 select 方法来获取结果
+	 若 seed 存在或不支持 querySelectorAll 等方法的时候，用 select 方法来获取结果
 
      rtrim /^[\x20\t\r\n\f]+|((?:^|[^\\])(?:\\.)*)[\x20\t\r\n\f]+$/g
      selector.replace( rtrim, "$1" ) 作用是去掉 selector 两边的空白
     */  
 	return select( selector.replace( rtrim, "$1" ), context, results, seed );
 }
+/*
+简化一下 Sizzle、select 等两个函数来看一看【seed 存在与否】对代码执行流程的影响：
+function Sizzle( selector, context, results, seed ) {
+	if ( documentIsHTML && !seed ) {
+		if ( (match = rquickExpr.exec( selector )) ) {
+			// getElementById、getElementsByTagName、getElementsByClassName 等方式 return results
+		}
+		if ( support.qsa && (!rbuggyQSA || !rbuggyQSA.test( selector )) ) {
+			// querySelectorAll 方式 return results
+		}
+	}
+	return select( selector.replace( rtrim, "$1" ), context, results, seed );
+}
+
+function select( selector, context, results, seed ) {
+	match = tokenize( selector );
+	if ( !seed ) {
+		if ( match.length === 1 ) {
+			// seed = find();
+		}
+	}	
+	compile( selector, match )(
+		seed,
+		context,
+		!documentIsHTML,
+		results,
+		rsibling.test( selector )
+	);
+	return results;
+}
+
+可以看到：
+① seed 为 undefined/null/false 时，Sizzle 函数首先会尝试以原生 api 返回 result，
+   若当前浏览器不支持 getElementsByClassName、querySelectorAll 等方法，就调用 select 函数，
+   select 函数会先给 seed 赋值（如果 match.length 不为 1，也就是 selector 存在逗号，有多个分组时，不会给 seed 赋值），
+   最后调用 compile()() 函数；
+② seed 有值时，Sizzle 函数会直接调用 select 函数，然后调用 compile()() 函数。
+*/
 
 /**
  * Create key-value caches of limited size
@@ -5555,7 +5593,7 @@ tokenize('div p + .clr [type=checkbox], #box p,div + span')
   （从右往左匹配，但是右边第一个是 "[type="checkbox"]" ，Expr.find 不认识这种选择器，跳过，继续向左）
 5 此时 seed 就有值了，这样把刷选的条件给缩的很小了
 6 如果匹配的 seed 有多个就需要进一步的过滤了，修正选择器 selector: "div > p + div.aaron [type="checkbox"]"
-7 最后，跳到一下阶段的编译函数
+7 最后，跳到下一阶段的编译函数
  */
 function select( selector, context, results, seed ) {
 	var i, tokens, token, type, find,
@@ -5574,7 +5612,13 @@ function select( selector, context, results, seed ) {
 	// 以下的代码块的作用是选出种子元素集合，最终的结果一定在种子元素集合中产生
 	if ( !seed ) {
 		// Try to minimize operations if there is only one group
-        // 如果选择器里没有逗号，则只有一组
+        /*
+		如果选择器里没有逗号，则只有一组的情况下才会在下面给 seed 赋值。
+		这样做是有道理的，假如有多组并列选择器，div span,.cls input[type="text"]
+		这样就 seed 为 span 集合或者 input 集合都不合适，情况会弄得很复杂。
+
+		也就是说，多组并列选择器的情况，这里就不会给 seed 赋值，也就是说 seed 没值的情况会让超级匹配器 superMatcher 来处理
+		*/
 		if ( match.length === 1 ) {
 
 			// Take a shortcut and set the context if the root selector is an ID
@@ -5646,7 +5690,7 @@ function select( selector, context, results, seed ) {
                         tokens.splice( i, 1 );
                         // 剩余的 token 重新组合成 selector 字符串
 						selector = seed.length && toSelector( tokens );
-                         // 如果 seed 为空或者没有剩余选择符，不再继续了
+                         // 如果没有剩余选择符，那么这个 seed 就是最终的结果，在这里返回最终结果就好
 						if ( !selector ) {
 							push.apply( results, seed );
 							return results;
