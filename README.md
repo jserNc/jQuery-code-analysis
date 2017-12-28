@@ -7,8 +7,7 @@
 ```javascript
 (function( window, undefined ) {
 
-    (21 , 94) 定义一些变量和函数，其中包括：
-    jQuery = function( selector, context ){}
+    (21 , 94) 定义一些变量和函数，其中包括：jQuery = function( selector, context ){}
 
     (96 , 283) 给 jQuery 函数添加一些方法和属性
 
@@ -351,9 +350,7 @@ attrHooks: {
     type: {
         set: function( elem, value ) {
             // 注意这里的 !jQuery.support.radioValue
-            if ( !jQuery.support.radioValue 
-                 && value === "radio" 
-                 && jQuery.nodeName(elem, "input") ) {
+            if ( !jQuery.support.radioValue && value === "radio" && jQuery.nodeName(elem, "input") ) {
                 ...
             }
         }
