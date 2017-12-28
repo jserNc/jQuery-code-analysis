@@ -4,7 +4,7 @@
 
 **jQuery 2.0.3 源码一共 8829 行（包括作者的注释），按行进行分解，总体框架如下：**
 
-```
+```javascript
 (function( window, undefined ) {
 
     (21 , 94) 定义一些变量和函数，其中包括：
