@@ -53,7 +53,7 @@
 
 **(1) 最外层的立即执行函数：**
 
-```
+```javascript
 (function( window, undefined ) {
     // code
 })(window);
@@ -78,14 +78,14 @@ b. 假如像上面那样将 undefined 作为形参，省略对应的实参。我
 既然函数内部的变量都是局部的，全局环境下是不可见的，那么为什么我们能用 jQuery 方法呢？
 
 其实代码结尾有一句：
-```
+```javascript
 window.jQuery = window.$ = jQuery
 ```
 这样就把局部的 jQuery 方法挂载到全局对象 window 下面了，所以全局 jQuery 方法就是内部定义的 jQuery 方法。另外，这也表明，jQuery 和 $ 是等价的，$ 可以看做是 jQuery 的简写别名。
 
 一般情况下，我们会这样写构造函数：
 
-```
+```javascript
 var jQuery = function( selector, context ) {
     this.selector = selector;
     this.context = context;
@@ -97,26 +97,26 @@ var jQuery = function( selector, context ) {
 这会导致挂载到 this 对象上的属性和方法全都变成全局属性和方法了，这样会对全局环境造成破坏。
 所以，jQuery 库并没有采取这种写法，而是这样写：
 
-```
+```javascript
 var jQuery = function( selector, context ) {
     return new jQuery.fn.init(selector,context,rootjQuery);
 }
 ```
 
 ① 如果普通调用 jQuery 方法，比如 jQuery('div') 返回的是:
-```
+```javascript
 new jQuery.fn.init( selector, context, rootjQuery )
 ```
 
 ② 如果用 new 运算符调用 jQuery 方法，比如 new jQuery('div')。new 运算符有个特性是，如果函数的返回值本来就是一个对象，那么 new 运算符的返回值就是那个对象。也就是说，不管是否用 new 运算符调用 jQuery 方法，最终返回的都是这个对象：
-```
+```javascript
 new jQuery.fn.init( selector, context, rootjQuery )
 ```
 
 所以，jQuery.fn.init 才是真正的构造函数。
 
 再看：
-```
+```javascript
 jQuery.fn = jQuery.prototype = {
     ...
     init: function( selector, context, rootjQuery ) {}
@@ -131,7 +131,7 @@ jQuery.fn = jQuery.prototype = {
 可是，上边说到 jQuery 只是一个普通函数而已，并没有作为一个真正的构造函数使用，那么给 jQuery 原型添加那么多属性和方法还有意义吗？答案是必须有！
 
 继续往下看，还有一句：
-```
+```javascript
 jQuery.fn.init.prototype = jQuery.fn;
 ```
 
@@ -143,14 +143,14 @@ jQuery.fn.init.prototype = jQuery.fn;
     
 首先明确一点，jQuery 是个函数，函数也属于对象的范畴，所以可以给它添加属性。
 
-```
+```javascript
 jQuery.extend = jQuery.fn.extend = function(){}
 ```
 
 这两个方法共用一个定义，关于其参数个数和类型导致的功能差异暂且不详说，说说 jQuery 内部常用的形式：
 
 ① 静态继承
-```
+```javascript
 jQuery.extend({
     p1 : 1,
     f1 : function(){}
@@ -160,7 +160,7 @@ jQuery.extend({
 这样写的作用是把匿名对象的 p1 属性和 f1 方法复制给 jQuery 对象，所以，jQuery 这个对象就拥有 p1、f1 属性了。jQuery 就是用这种写法来扩展工具方法的，比如 jQuery.each 方法。
 
 ② 实例继承
-```
+```javascript
 jQuery.fn.extend({
     p1 : 1,
     f1 : function(){}
@@ -168,7 +168,7 @@ jQuery.fn.extend({
 ```
 
 这样写的作用是把匿名对象的 p1 属性和 f1 方法复制给 jQuery.fn 对象，前边说到：
-```
+```javascript
 jQuery.fn.init.prototype = jQuery.fn
 ```
 所以，这里的 p1 和 f1 都复制给了 jQuery.fn.init.prototype，所以 jQuery.fn.init 的实例都拥有 p1、f1 属性了。前边说到 $('div') 这种都是 jQuery.fn.init 的实例，所以，$('div') 就拥有 p1、f1 属性了。jQuery 就是用这种写法来扩展实例方法的，比如 $('div').css 方法。
@@ -177,7 +177,7 @@ jQuery.fn.init.prototype = jQuery.fn
 
 在 js 代码执行的时候，如果涉及页面 dom 元素的操作，要使得代码顺利执行不出错，前提条件就是 dom 元素结构必须在已经加载完成。为了保证代码在 dom 元素加载完毕后执行，jQuery 采取的方式就是将代码用以下形式包裹起来，有以下 3 种写法：
 
-```
+```javascript
 // 方式一
 $(function(){
     // jQuery functions go here
@@ -212,7 +212,7 @@ $('div span') 表示选取所有的 div 下的 span 元素。$('span > a[title="
 **(6) 链式调用**
 
 平常使用 jQuery 过程中，会经常用到这种链式写法：
-```
+```javascript
 $('input').css('width','20px').click(function(){alert(1)})
 ```
 
@@ -223,13 +223,13 @@ $('input').css('width','20px').click(function(){alert(1)})
 以上 css、click 方法都是我们定义在 jQuery.fn 上的方法，根据前边的分析我们知道，任何一个 jQuery() 方法生成的对象（称之为 jQuery 实例对象）都可以调用jQuery.fn 上挂载的方法，所以 css、click 等方法是可以被 jQuery 实例对象调用的。
 
 所以，我们断定以下都是 jQuery 对象：
-```
+```javascript
 $('input')                          // jQuery 对象
 $('input').css('font-size','20px')  // jQuery 对象
 ```
 
 事实也确实这样，举个简单的例子：
-```
+```javascript
 var n = 1;
 var o = {
     add : function(){
@@ -252,7 +252,7 @@ console.log(n);     // 2
 我们知道，在 $ 和 jQuery 是等价的，都表示内部的 jQuery 函数。可是，说到底，$ 和 jQuery 只是普通的标识符，并不是 JavaScript语言的关键词和保留字。那么，不光 jQuery 库可以使用它们，我们的自定义代码，或者别的 JavaScript 库也都可以使用它们作为变量名。假如另一个第三方库也用 $ 或者 jQuery 作为变量名，那就产生了冲突，先引入的那个就会被后引入的覆盖，以致于失效。所以，jQuery 库做出了防冲突的机制。
 
 上面提到 jQuery 库加载过程中会执行：
-```
+```javascript
 window.jQuery = window.$ = jQuery
 ```
 
@@ -261,7 +261,7 @@ window.jQuery = window.$ = jQuery
 考虑到这个问题，jQuery 做了两件事：
 
 ① 执行上面那句覆盖操作之前，就保存住原来的全局 jQuery 和 $ 变量
-```
+```javascript
 _jQuery = window.jQuery;
 _$ = window.$;
 ```
@@ -270,7 +270,7 @@ _$ = window.$;
 
 ② 定义 jQuery.noConflict 函数，这个函数的作用是让 jQuery 放弃对 $ 和 jQuery 标识符的使用权，换成其他的标识符，以避免冲突。
 
-```
+```javascript
 // 如果 deep 为假，就只让出 $ 的控制权；
 // 如果 deep 为真，就同时让出 $ 和 jQuery 的使用权。
 jQuery.noConflict: function( deep ) {
@@ -291,7 +291,7 @@ jQuery.noConflict: function( deep ) {
 ```
 
 比如，执行：
-```
+```javascript
 var jq = jQuery.noConflict(true);
 ```
 
@@ -299,12 +299,12 @@ var jq = jQuery.noConflict(true);
 
 
 举例说明：假如引入 jQuery 库之前，已经有了全局的 $ 和 jQuery 变量：
-```
+```javascript
 var $ = 123;
 var jQuery = 456;
 ```
 为了不让 jQuery 库覆盖这两个全局变量，我们这么做：
-```
+```javascript
 var jq = jQuery.noConflict(true);
 ```
 
@@ -315,7 +315,7 @@ var jq = jQuery.noConflict(true);
 我们自己写原生代码的时候，会遇到很多浏览器兼容问题，而用 jQuery 库后就不需要再去关注与浏览器兼容问题了，这是因为 jQuery 库已经把这些兼容性问题处理好了。处理兼容问题，在 jQuery 内部主要分为两步：
 
 ① 兼容性问题检测，得到一个功能支持性列表
-```
+```javascript
 jQuery.support = (function( support ) {
     // 功能检测代码
     return support;
@@ -323,7 +323,7 @@ jQuery.support = (function( support ) {
 ```
 
 在 chrome 下执行以上立即执行函数，得到：
-```
+```javascript
 jQuery.support = {
     checkOn : true
     optSelected : true
@@ -346,7 +346,7 @@ jQuery.support = {
 也就是说 jQuery.support 只是进行功能检测，真正的兼容问题处理是靠一系列 hooks 方法完成的。
 
 以 attrHooks 解决属性操作兼容性问题为例，attrHooks 对象会有多个属性，代表那几个属性有兼容性问题。如果这个属性有 get 子属性说明获取该属性时兼容性问题，如果这个属性有 set 子属性说明设置该属性有设置兼容性问题。attrHooks 中没有的属性说明是正常的，用常规途径获取或者设置该属性就好了。
-```
+```javascript
 attrHooks: {
     type: {
         set: function( elem, value ) {
@@ -366,7 +366,7 @@ attrHooks: {
 以上的 attrHooks 只是钩子的一种，以上 jQuery.support 中的兼容问题都是分散在众多类似于 attrHooks 的钩子中完成的。如果上面的叙述没能很好的说明钩子的用法，那就再举个简单例子：
 
 例如，假如学生获得了某比赛第一名，考生加 50 分，获得了第二名，高考加 30 分，获得了第三名，高考加 10 分。那么，统计学生高考总分时，不同的奖项加分就可以用钩子机制来实现。
-```
+```javascript
 var reward = {
     firstPlace : 50,   
     secondPlace : 30,
