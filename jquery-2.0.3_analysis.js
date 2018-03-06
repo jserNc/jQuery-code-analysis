@@ -924,7 +924,7 @@ jQuery.fn = jQuery.prototype = {
 			this.context = selector.context;
 		}
         
-        // 其他情况都各自 return 了，这是返回最后一种情况
+        // 以上情况都各自 return 了，这里返回最后一种情况
 		return jQuery.makeArray( selector, this );
 	},
 
@@ -1218,7 +1218,7 @@ jQuery.extend({
         // doSomething
     });
 
-    ③ 其实情况 ① 也可以看成是 ②，只不过把引入 jQuery 之前的 $ 和 jQuery 当做 undefined
+    其实情况 ① 也可以看成是 ②，只不过把引入 jQuery 之前的 $ 和 jQuery 当做 undefined
      */
     
 
@@ -2813,13 +2813,13 @@ if(document.querySelectorAll) {
 		return makeArray(context.querySelectorAll(query));
 	}
 } else {
-	sizzle 引擎实现，主要模拟querySelectorAll
+	sizzle 引擎实现，主要模拟 querySelectorAll
 }
 
 可以看到，Sizzle 选择器引擎的主要工作就是向上兼容 querySelectorAll 这个 API，假如所有浏览器都支持该 API，那 Sizzle 就没有存在的必要了
 
 几个主要函数：
-Sizzle = function(selector, context, result, seed) // Sizzle引擎的入口函数
+Sizzle = function(selector, context, result, seed) // Sizzle 引擎的入口函数
 Sizzle.find   // 主查找函数
 Sizzle.filter // 主过滤函数
 Sizzle.selectors.relative: { // 块间关系处理函数集
@@ -2959,7 +2959,7 @@ function Sizzle( selector, context, results, seed ) {
 
 		(1) querySelector VS querySelectorAll
 
-		querySelector 返回的是一个第一个匹配元素，querySelectorAll 返回的一个所有匹配元素集合
+		querySelector 返回的是第一个匹配元素，querySelectorAll 返回的是所有匹配元素集合
 
 		(2) querySelectorAll VS getElementsBy*
 
@@ -5533,35 +5533,35 @@ function multipleContexts( selector, contexts, results ) {
 }
 
 /* 
- * select方法是Sizzle选择器包的核心方法之一，其主要完成下列任务： 
- * 1、调用tokenize方法完成对选择器的解析 
- * 2、对于没有初始集合（即seed没有赋值）且是单一块选择器（即选择器字符串中没有逗号）， 
+ * select 方法是 Sizzle 选择器包的核心方法之一，其主要完成下列任务： 
+ * 1、调用 tokenize 方法完成对选择器的解析 
+ * 2、对于没有初始集合（即 seed 没有赋值）且是单一块选择器（即选择器字符串中没有逗号）， 
  *    完成下列事项： 
- *    1) 对于首选择器是ID类型且context是document的，则直接获取对象替代传入的context对象 
- *    2) 若选择器是单一选择器，且是id、class、tag类型的，则直接获取并返回匹配的DOM元素 
- *    3) 获取最后一个id、class、tag类型选择器的匹配DOM元素赋值给初始集合（即seed变量） 
- * 3、通过调用compile方法获取“预编译”代码并执行，获取并返回匹配的DOM元素 
+ *    1) 对于首选择器是 ID 类型且 context 是 document 的，则直接获取对象替代传入的 context 对象 
+ *    2) 若选择器是单一选择器，且是 id、class、tag 类型的，则直接获取并返回匹配的DOM元素 
+ *    3) 获取最后一个 id、class、tag 类型选择器的匹配 DOM 元素赋值给初始集合（即 seed 变量） 
+ * 3、通过调用 compile 方法获取“预编译”代码并执行，获取并返回匹配的 DOM 元素 
  *  
  * @param selector 已去掉头尾空白的选择器字符串 
- * @param context 执行匹配的最初的上下文（即DOM元素集合）。若context没有赋值，则取document。 
- * @param results 已匹配出的部分最终结果。若results没有赋值，则赋予空数组。 
+ * @param context 执行匹配的最初的上下文（即 DOM 元素集合）。若 context 没有赋值，则取 document。 
+ * @param results 已匹配出的部分最终结果。若 results 没有赋值，则赋予空数组。 
  * @param seed 初始集合 
  */
 
 
  /*
 
-CSS的浏览器实现的基本接口
+浏览器实现的基本接口
 
-除去querySelector,querySelectorAll
+除了 querySelector,querySelectorAll
 
-HTML文档一共有这么四个API：
+HTML 文档一共有这么四个 API：
 
-getElementById，上下文只能是HTML文档。
-getElementsByName，上下文只能是HTML文档。
-getElementsByTagName，上下文可以是HTML文档，XML文档及元素节点。
-getElementsByClassName，上下文可以是HTML文档及元素节点。IE8还没有支持。
-所以要兼容的话sizzle最终只会有三种完全靠谱的可用
+getElementById，上下文只能是 HTML 文档。
+getElementsByName，上下文只能是 HTML 文档。
+getElementsByTagName，上下文可以是 HTML 文档，XML 文档及元素节点。
+getElementsByClassName，上下文可以是 HTML 文档及元素节点。IE8 还没有支持。
+所以要兼容的话 sizzle 最终只会有三种完全靠谱的可用
 
 Expr.find = {
       'ID'    : context.getElementById,
@@ -5898,8 +5898,8 @@ cb.fire() // 依次触发 aaa，bbb 方法
 
 跟事件绑定类似：
 document.addEventListener('click',function(){console.log(1),false});
-document.addEventListener('click',function(){console.log(1),false});
-document.addEventListener('click',function(){console.log(1),false});
+document.addEventListener('click',function(){console.log(2),false});
+document.addEventListener('click',function(){console.log(3),false});
 
 点击页面后，会依次弹出 1，2，3
 
@@ -6277,8 +6277,8 @@ jQuery.Callbacks = function( options ) {
                     cb.add(fn1,fn2);
                     cb.fire('hello');
                     
-                    观察上面这段代码，我们以为程序会死循环，一直执行 fn1 fn1 ...
-                    实际执行上面的代码，我们发现执行顺序是 fn1 fn2 fn1 fn2 ...
+                    观察上面这段代码，我们以为程序会死循环，一直执行 fn1 -> fn1 ...
+                    实际执行上面的代码，我们发现执行顺序是 fn1 -> fn2 -> fn1 -> fn2 ...
 
                     这是因为这里采取了措施，如果在 firing 过程中，再次调用 cb.fire()，也会把上次的函数队列完全执行完，再执行新的 fire 队列                    
                      */
@@ -6548,7 +6548,7 @@ newDfd.done(function(){
 
 newDfd.reject();
 
-1 秒后弹出 ’成功‘，并且下面的 reject 方法还会报错，newDfd.reject 不是一个函数（undefined）
+1 秒后弹出 ’成功‘（并且报错：newDfd.reject 为 undefined ，不是一个函数）
 
 例子15：
 function read(){
@@ -6600,19 +6600,19 @@ deferred 对象 api：
 添加【处理中】调用的回调方法
 
 (5) deferred.resolve/resolveWith([context], args)
-在任务处理【成功】之后使用此方法触发【成功】事件，之前加入 done 队列的回调函数会被触发
+在任务处理【成功】之后使用此方法触发【成功】事件，之前加入到 done 队列的回调函数会被依次触发
 
 (6) deferred.reject/rejectWith([context], args)
-在任务处理【失败】之后使用此方法触发【失败】事件，之前加入 fail 队列的回调函数会被触发
+在任务处理【失败】之后使用此方法触发【失败】事件，之前加入到 fail 队列的回调函数会被依次触发
 
 (7) deferred.notify/notifyWith([context], args)
-在任务【处理中】可以使用此方法触发【处理中】事件，之前加入progress队列的回调会被触发
+在任务【处理中】可以使用此方法触发【处理中】事件，之前加入到 progress 队列的回调会被依次触发
 
 (8) deferred.promise()
 简单理解就是生成一个跟 deferred 一样的对象，但是无法在外部用 resolve、reject、notify 等去修改当前任务状态
 
 (9) deferred.then(fnDone, fnFail, fnProgress)
-可以直接传入 3 个回调函数，分别对应done|fail|progress三个状态的回调，相当于这种写法的快捷方式：
+可以直接传入 3 个回调函数，分别对应 done|fail|progress 三个状态的回调，相当于这种写法的快捷方式：
 
 deferred.done(fnDone).fail(fnFail).progress(fnProgress)
 
@@ -6797,7 +6797,7 @@ jQuery.extend({
 										.fail( newDefer.reject )
 										.progress( newDefer.notify );
 								} else {
-                                    // 如果回调返回的是不是一个Deferred实例，则被当做args由XXXWith派发出去
+                                    // 如果回调返回的是不是一个 Deferred 实例，则被当做 args 由 XXXWith 派发出去
 									newDefer[ action + "With" ]( this === promise ? newDefer.promise() : this, fn ? [ returned ] : arguments );
 								}
 							});
