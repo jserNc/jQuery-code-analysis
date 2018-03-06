@@ -6988,7 +6988,7 @@ jQuery.extend({
         alert('失败');
     });
 
-    有一个延迟对象 bbb() 失败了,所以弹出 ’失败‘
+    有一个延迟对象 bbb() 失败了，所以弹出 ’失败‘
 
     ④ $.when() 的参数如果不是延迟对象，那就相当于跳过该参数
     function aaa(){
@@ -7021,7 +7021,7 @@ jQuery.extend({
         alert('失败');
     });
 
-    以上都是弹出 ’成功‘
+    以上都是直接弹出 ’成功‘
 
     ⑥ 如果参数不是延迟对象，会把参数传递给 when 的 done 回调
     $.when(123,456).done(function(){
@@ -7168,7 +7168,7 @@ jQuery.extend({
 // 后面的 hooks 来修复兼容问题
 /*
 jQuery.support 值其实就是一个对象 {...}
-在chrome下面用 for-in 循环把它的值打印出来
+在 chrome 下用 for-in 循环把它的值打印出来
 for(var attr in jQuery.support){
     console.log(attr +' : '+jQuery.support[attr]);
 }
@@ -7393,7 +7393,7 @@ var obj = {};
 oDiv.name = obj;
 obj.age = oDiv;
 
-$.('#div1').attr('name',obj);
+$('#div1').attr('name',obj);
 如果 obj 的某个属性又引用了 #div，就会造成内存泄漏，
 
 【不过 data 方法会优化这一点，不会造成内存泄漏】
@@ -7452,8 +7452,8 @@ console.log(obj[0]);  // {}
 
 这样就为 obj 对象添加了属性 0，这个属性只能获取，因为没有 set 方法，所以不能修改
 
-get 或 set 不是必须成对出现，任写其一就可以。如果不设置方法，则get和set的默认值为undefined
-当使用了 get 或 set 方法，不允许使用writable和value这两个属性
+get 或 set 不是必须成对出现，任写其一就可以。如果不设置方法，则 get 和 set 的默认值为 undefined
+当使用了 get 或 set 方法，不允许使用 writable 和 value 这两个属性
 
  */
 
@@ -7787,7 +7787,7 @@ data_priv = new Data();
 每个节点的 dom[expando] 的值都设为一个自增的变量 id，保持全局唯一性。 
 这个 id 的值就作为 cache 的 key 用来关联 DOM 节点和数据。
 也就是说 cache[id] 就取到了这个节点上的所有缓存，
-即id就好比是打开一个房间( DOM 节点)的钥匙。
+即 id 就好比是打开一个房间( DOM 节点)的钥匙。
 
 例如：Body元素 expando：uid
 
@@ -7798,11 +7798,11 @@ jQuery203054840829130262140.37963378243148327: 3
 所以cache对象结构应该像下面这样:
 
 cache = {
-    "uid1": { // DOM节点1缓存数据，
+    "uid1": { // DOM 节点 1 的缓存数据，
         "name1": value1,
         "name2": value2
     },
-    "uid2": { // DOM节点2缓存数据，
+    "uid2": { // DOM 节点 2 的缓存数据，
         "name1": value1,
         "name2": value2
     }
@@ -7904,10 +7904,10 @@ eg:
 <div>bbb</div>
 <div>ccc</div>
 
-a) $.('div').html('hello');
+a) $('div').html('hello');
 // 3 个 div 的内容都变成  hello 了
 
-b) $.('div').html();
+b) $('div').html();
 // 只返回第一个 div 的内容 aaa
  */
 jQuery.fn.extend({
@@ -8166,6 +8166,7 @@ $.queue(document, 'q1', [aaa,bbb]);
 
 ③ 出队
 $.queue(document, 'q1', [aaa,bbb]);
+
 $.dequeue(document, 'q1');
 // 打印 1（取出函数 aaa，并且执行 aaa()）
 
@@ -8311,6 +8312,7 @@ jQuery.extend({
 
 			// clear up the last queue stop function
 			delete hooks.stop;
+            // next 方法作为 fn 的实参
 			fn.call( elem, next, hooks );
             /*
             例：
@@ -8324,7 +8326,7 @@ jQuery.extend({
                 console.log(22222)
             }
 
-            //set
+            // set
             $.queue(body, 'aa', cb1); // 第三个参数为function
             $.queue(body, 'aa', cb2);
 
@@ -8587,10 +8589,9 @@ $('input').prop('miaov'）  // （获取不到值，大多数浏览器都返回空）
 $('input').removeAttr('id')   可以删除 id 属性
 $('input').removeProp('id')   删除不了 id 属性
 
-
 总的来说：
 基本可以总结为 attribute 节点都是在 HTML 代码中可见的，
-而 property 只是一个普通的名值对属性
+而 property 只是一个普通的键值对属性
 */
 var nodeHook, boolHook,
     /*
@@ -9146,9 +9147,9 @@ function judge(examinees) {
         // 判断是否有后门关系
         if (curExaminee.fatherName === 'xijingping') {
             ret += 1000;
-        } else if (curExaminee.fatherName === 'ligang') {
+        } else if (curExaminee.fatherName === '小刚') {
             ret += 100;
-        } else if (curExaminee.fatherName === 'pengdehuai') {
+        } else if (curExaminee.fatherName === '小华') {
             ret += 50;
         }
         result[curExaminee.name] = ret;
@@ -9157,9 +9158,9 @@ function judge(examinees) {
 }
   
   
-var lihao = examinee("lihao", 10, 'ligang');
-var xida = examinee('xida', 8, 'xijinping');
-var peng = examinee('peng', 60, 'pengdehuai');
+var lihao = examinee("lihao", 10, '小刚');
+var xida = examinee('xida', 8, '小明');
+var peng = examinee('peng', 60, '小华');
 var liaoxiaofeng = examinee('liaoxiaofeng', 100, 'liaodaniu');
   
 var result = judge([lihao, xida, peng, liaoxiaofeng]);
@@ -9174,9 +9175,9 @@ for (var name in result) {
 
 // relationHook 是个钩子函数，用于得到关系得分
 var relationHook = {
-    "xijinping": 1000,   
-    "ligang": 100,
-    "pengdehuai": 50,
+    "小明": 1000,   
+    "小刚": 100,
+    "小华": 50,
 　　 // 新的考生只需要在钩子里添加关系分
 }
  
@@ -9204,9 +9205,9 @@ function judge(examinees) {
 }
   
   
-var lihao = examinee("lihao", 10, 'ligang');
-var xida = examinee('xida', 8, 'xijinping');
-var peng = examinee('peng', 60, 'pengdehuai');
+var lihao = examinee("lihao", 10, '小刚');
+var xida = examinee('xida', 8, '小明');
+var peng = examinee('peng', 60, '小华');
 var liaoxiaofeng = examinee('liaoxiaofeng', 100, 'liaodaniu');
   
 var result = judge([lihao, xida, peng, liaoxiaofeng]);
@@ -9378,7 +9379,7 @@ jQuery.extend({
         这里只有 type 属性和 set 子属性，说明 type 属性的设置（set）需要兼容
 
          */ 
-        // 获取钩子方法，解决真的某种属性的【设置/获取】兼容问题
+        // 获取钩子方法，解决针对某种属性的【设置/获取】兼容问题
         // 类型不为元素节点，或者不是 xml 节点
 		if ( nType !== 1 || !jQuery.isXMLDoc( elem ) ) {
 			name = name.toLowerCase();
