@@ -9801,28 +9801,28 @@ elem.on('click','p',function(){});
 
 jQuery 还做了以下工作：
 （1）兼容问题处理
-    ① 事件对象的获取兼容，IE的event在是在全局的window，标准的是event是事件源参数传入到回调函数中
-    ② 目标对象的获取兼容，IE中采用srcElement，标准是target
-    ③ relatedTarget只是对于mouseout、mouseover有用。在IE中分成了to和from两个Target变量，在mozilla中没有分开。为了保证兼容，采用relatedTarget统一起来
-    ④ event的坐标位置兼容
+    ① 事件对象的获取兼容，IE 的 event 在全局的 window 对象下，标准的 event 是作为事件源参数传入到回调函数中
+    ② 目标对象的获取兼容，IE 中采用 event.srcElement，标准是 event.target
+    ③ relatedTarget 只是对于 mouseout、mouseover 有用。在 IE 中分成了 to 和 from 两个 Target 变量，在 mozilla 中没有分开。为了保证兼容，采用 relatedTarget 统一起来
+    ④ event 的坐标位置兼容
     ...
 
 （2）事件的存储优化
-    jQuery并没有将事件处理函数直接绑定到DOM元素上，
-    而是通过.data存储在缓存.data存储在缓存.cahce上，
+    jQuery 并没有将事件处理函数直接绑定到DOM元素上，
+    而是通过 .data 存储在缓存 .data 存储在缓存 .cahce 上，
     这里就是之前分析的贯穿整个体系的缓存系统了
     
     ① 声明绑定的时候：
-    首先为DOM元素分配一个唯一ID，绑定的事件存储在
+    首先为 DOM 元素分配一个唯一 ID，绑定的事件存储在
     .cahce[唯一ID][.expand ][ 'events' ]上，
-    而events是个键-值映射对象，键就是事件类型，对应的值就是由事件处理函数组成的数组，
-    最后在DOM元素上绑定（addEventListener/ attachEvent）一个事件处理函数eventHandle，
+    而 events 是个键-值映射对象，键就是事件类型，对应的值就是由事件处理函数组成的数组，
+    最后在 DOM 元素上绑定（addEventListener/ attachEvent）一个事件处理函数 eventHandle，
     这个过程由 jQuery.event.add 实现。
     
     ② 执行绑定的时候：
     当事件触发时eventHandle被执行，
     eventHandle再去$.cache中寻找曾经绑定的事件处理函数并执行，
-    这个过程由 jQuery.event. trigger 和 jQuery.event.handle实现。
+    这个过程由 jQuery.event.trigger 和 jQuery.event.handle实现。
 
     ③ 事件销毁
     事件的销毁则由jQuery.event.remove 实现，
@@ -10446,7 +10446,7 @@ jQuery.event = {
 			// (avoids potential for endless recursion during removal of special event handlers)
 			/*
             ① 如果原来确实有事件绑定，然后这次全清空了，那就解除该类型事件监听
-            也就是说，如果原来没有时间绑定 origCount === 0，那就根本没绑定，更谈不上解除监听
+            也就是说，如果原来没有事件绑定 origCount === 0，那就根本没绑定，更谈不上解除监听
             ② 删除 events 的 type 属性
             */
             if ( origCount && !handlers.length ) {
@@ -13014,9 +13014,9 @@ jQuery.extend({
 				rhtml.test( 'abc&lt;aba' )  // true
 
 				看两个 html 实体符号：
-				显示    描述	  实体名称  实体编号
-				<		小于号		&lt;	 &#60;
-				>		大于号		&gt;	 &#62;
+				显示    描述	   实体名称  实体编号
+				<	   小于号		&lt;	 &#60;
+				>	   大于号		&gt;	 &#62;
 				*/
 				// 将不包含 html 标签的字符串转换为文本节点
 				} else if ( !rhtml.test( elem ) ) {
@@ -18539,7 +18539,7 @@ var myModule = (function(){
 
 第一个流行的模块化规范是由服务器端的 JavaScript 应用带来，CommonJS 规范是由 nodejs 发扬光大。
 
-a. 定义模块
+a. 定义模块：
 根据 CommonJS 规范，一个单独的文件就是一个模块。每一个模块都是一个单独的作用域，
 也就是说，在该模块内部定义的变量，无法被其他模块读取，除非定义为 global 对象的属性
 
