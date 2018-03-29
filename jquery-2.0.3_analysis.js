@@ -15,7 +15,7 @@
 源码总共 8829 行（包括作者的注释），按行进行分解，总体框架如下：
 注：
 ① 这里参考 [妙味课堂-逐行分析jQuery源码的奥妙]
-② 这里的行数都是和 2.0.3 版本源码对应的， 而不是当前文件
+② 这里的行数都是和 2.0.3 版本源码对应的，而不是当前文件
 
 (function( window, undefined ) {
 
@@ -5894,7 +5894,7 @@ var cb = $.callbacks();
 cb.add(aaa);
 cb.add(bbb);
 
-cb.fire() // 依次触发 aaa，bbb 方法
+cb.fire() // 依次触发 aaa，bbb 方法打印 1、2
 
 跟事件绑定类似：
 document.addEventListener('click',function(){console.log(1),false});
@@ -6076,7 +6076,7 @@ jQuery.Callbacks = function( options ) {
 			if ( list ) {
                 // 如果没有配置 once 参数，stack 为 []
                 
-                // 前面的 firing 过程中，再调用 fire(value) 方法不会打断 firing，而是将 value 压栈，
+                // 前面的 firing 过程中，再调用 fire(value) 方法时并不会打断 firing，而是将 value 压栈，
                 // 等firing 结束，再执行下一个 fire(value)
                 
                 // 回调队列执行过程中，调用 self.fire(arg) 方法，新的参数会存在 stack 中
@@ -8187,7 +8187,7 @@ $(document).dequeue('q1');  // bbb() -> 打印 2
 ⑤ 动画
 #div1 { width:100px; height:100px; background:red; position:absolute;}
 
-$('#div1').ckick(function(){
+$('#div1').click(function(){
     $(this).animate({width:300},2000);  其实是调用 setInterval
     $(this).animate({height:300},2000); 其实是调用 setInterval
     $(this).animate({left:300},2000);   其实是调用 setInterval
@@ -8199,7 +8199,7 @@ $('#div1').ckick(function(){
 而这里的动画确实做到了前一个动画执行完，才开始后一个动画，这种顺序性就是队列机制来保证的
 
 ⑥ 入队，出队，animate
-$('#div1').ckick(function(){
+$('#div1').click(function(){
     $(this).animate({width:300},2000).queue('fx',function(){
         $(this).dequeue(); // dequeue 方法没写实参，默认是 'fx'
     }).animate({left:300},2000);
@@ -8209,7 +8209,7 @@ $('#div1').ckick(function(){
 
 以上写法相当于：
 
-$('#div1').ckick(function(){
+$('#div1').click(function(){
     $(this).animate({width:300},2000).queue('fx',function(next){
         next();
     }).animate({left:300},2000);
@@ -16670,7 +16670,7 @@ var fxNow, timerId,
 function createFxNow() {
 	/*
 	① 省略 setTimeout 的第二个参数，则该参数默认为 0
-	② 将 fxNow 值变为当前时间戳并返回后，尽可能快地将 fxNow 置为 undefined
+	② 将 fxNow 值变为当前时间戳并返回后，然后尽可能快地将 fxNow 置为 undefined
 	*/
 	setTimeout(function() {
 		fxNow = undefined;
